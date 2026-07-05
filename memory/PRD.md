@@ -39,9 +39,15 @@ Complete billing/management website for a snooker parlour with: dashboard/live t
 - [x] Data backup/restore/clear
 - [x] Responsive mobile-first layout
 
+## Phase 2 (Feb 2026)
+- [x] Multi-player sessions with per-player ratios
+- [x] Per-snack assignment to a player or Shared (auto-prorated by ratio)
+- [x] Per-player bill breakdown in Close modal and Invoice (share%, table share, snacks share, subtotal)
+- [x] Audit log (login, session open/pause/resume/switch/close, credit payment) with admin-only viewer under Admin > Audit Log
+
 ## Backlog (P1/P2)
-- P1: Multi-user activity log (audit trail)
-- P1: SMS invoice send (Twilio)
+- P1: SMS invoice send (Twilio) with per-player split forwarding
+- P1: Happy Hour auto-rules (time-based table rate discounts)
 - P2: Weekly/monthly PDF reports
-- P2: Barcode-based snack add
 - P2: Charts on dashboard for revenue trends
+- P2: Barcode-based snack add
