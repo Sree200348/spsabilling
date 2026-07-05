@@ -76,11 +76,7 @@ export default function OpenTableModal({ table, onClose, onDone }) {
                 <Input data-testid={`open-mobile-input-${i}`} placeholder="Mobile" value={p.mobile} onChange={(e) => updateP(i, { mobile: e.target.value })} className="bg-zinc-900 border-zinc-800 h-9" />
               </div>
               {players.length > 1 && (
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-zinc-400">Ratio</span>
-                  <Input data-testid={`open-ratio-input-${i}`} type="number" min="0" step="0.1" value={p.ratio} onChange={(e) => updateP(i, { ratio: e.target.value })} className="bg-zinc-900 border-zinc-800 h-8 w-24" />
-                  <span className="text-zinc-500">of table amount</span>
-                </div>
+                <div className="text-[10px] text-zinc-500">Ratio can be set at billing time.</div>
               )}
             </div>
           ))}

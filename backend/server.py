@@ -167,6 +167,10 @@ class SnackAddReq(BaseModel):
     assigned_to: Optional[str] = None  # local session player id or None (shared)
 
 
+class RatiosReq(BaseModel):
+    ratios: Dict[str, float]
+
+
 class SwitchReq(BaseModel):
     new_table_id: str
 
@@ -731,6 +735,19 @@ async def attach_player(sid: str, body: AttachPlayerReq, _: dict = Depends(get_c
         raise HTTPException(404, "Player not found")
     await db.sessions.update_one({"id": sid}, {"$set": {"player_id": p["id"], "player_name": p["name"], "player_mobile": p.get("mobile", "")}})
     return {"ok": True}
+
+
+@api.post("/sessions/{sid}/ratios")
+async def update_ratios(sid: str, body: RatiosReq, _: dict = Depends(get_current_user)):
+    s = await db.sessions.find_one({"id": sid})
+    if not s:
+        raise HTTPException(404, "Not found")
+    players = s.get("players", [])
+    for p in players:
+        if p["id"] in body.ratios:
+            p["ratio"] = max(0.0, float(body.ratios[p["id"]] or 1))
+    await db.sessions.update_one({"id": sid}, {"$set": {"players": players}})
+    return {"ok": True, "players": players}
 
 
 @api.get("/sessions/{sid}/preview-bill")

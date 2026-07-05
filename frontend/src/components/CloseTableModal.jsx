@@ -17,6 +17,14 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   const [payments, setPayments] = useState([{ _key: crypto.randomUUID(), method: "cash", amount: 0 }]);
   const [preview, setPreview] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [ratios, setRatios] = useState({}); // { player_local_id: ratio }
+  const [ratiosInit, setRatiosInit] = useState(false);
+
+  async function saveRatios(next) {
+    try {
+      await api.post(`/sessions/${session.id}/ratios`, { ratios: next });
+    } catch (e) { toast.error(apiErr(e)); }
+  }
 
   async function refresh() {
     try {
@@ -24,6 +32,12 @@ export default function CloseTableModal({ session, onClose, onDone }) {
         params: { manual_discount: Number(manualDiscount) || 0, apply_membership_to_snacks: applyMemToSnacks },
       });
       setPreview(r.data);
+      if (!ratiosInit) {
+        const init = {};
+        (r.data.session.players || []).forEach(p => { init[p.id] = Number(p.ratio) || 1; });
+        setRatios(init);
+        setRatiosInit(true);
+      }
     } catch (e) { toast.error(apiErr(e)); }
   }
   useEffect(() => { refresh(); }, [manualDiscount, applyMemToSnacks]);
@@ -131,15 +145,32 @@ export default function CloseTableModal({ session, onClose, onDone }) {
               </div>
               {b.per_player && b.per_player.length > 1 && (
                 <div className="mt-4 border-t border-zinc-800 pt-3">
-                  <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Per-Player Breakdown</div>
-                  <div className="space-y-1">
+                  <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Per-Player Breakdown &amp; Ratio</div>
+                  <div className="space-y-2">
                     {b.per_player.map((pp) => (
                       <div key={pp.player_local_id} className="text-xs border border-zinc-800 rounded p-2" data-testid={`per-player-${pp.name}`}>
-                        <div className="flex justify-between font-semibold">
+                        <div className="flex justify-between font-semibold items-center">
                           <span>{pp.name} <span className="text-zinc-500">({pp.share_percent}%)</span></span>
-                          <span className="text-[#10B981]">{fmt(pp.subtotal)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-zinc-500 text-[10px]">Ratio</span>
+                            <Input
+                              data-testid={`ratio-input-${pp.name}`}
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={ratios[pp.player_local_id] ?? pp.ratio}
+                              onChange={async (e) => {
+                                const next = { ...ratios, [pp.player_local_id]: Number(e.target.value) || 0 };
+                                setRatios(next);
+                                await saveRatios(next);
+                                refresh();
+                              }}
+                              className="bg-zinc-900 border-zinc-800 h-7 w-16 text-right"
+                            />
+                            <span className="text-[#10B981] font-bold">{fmt(pp.subtotal)}</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between text-zinc-400"><span>Table share</span><span>{fmt(pp.table_share)}</span></div>
+                        <div className="flex justify-between text-zinc-400 mt-1"><span>Table share</span><span>{fmt(pp.table_share)}</span></div>
                         <div className="flex justify-between text-zinc-400"><span>Snacks</span><span>{fmt(pp.snacks_share)}</span></div>
                       </div>
                     ))}
