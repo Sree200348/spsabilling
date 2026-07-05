@@ -1,0 +1,18 @@
+{
+  "summary": "Regression pass after Layout.jsx useMemo refactor. All nav rendering, role gating, routing, logout, and mobile menu toggle verified via Playwright against preview URL.",
+  "tested_scope": ["frontend"],
+  "passed": [
+    "Admin login shows all 7 nav items (Dashboard, Players, Inventory, Memberships, Credit, Reports, Admin)",
+    "Cashier login shows exactly 6 nav items (Admin hidden)",
+    "Cashier navigating to /admin is redirected to /",
+    "All 6 nav links (Dashboard, Players, Inventory, Memberships, Credit, Reports) load correct routes without errors",
+    "Logout clears sp_token from localStorage and redirects to /login",
+    "Mobile viewport (375x812): menu-toggle-btn opens and closes the collapsed nav"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Login uses testids login-username-input/login-password-input/login-submit-btn. Layout memoized visibleNav works identically for both roles; no console errors observed during navigation."
+}

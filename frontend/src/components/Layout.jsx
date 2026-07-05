@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { LayoutDashboard, Users, Package, Award, CreditCard, BarChart3, Settings, LogOut, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
@@ -17,6 +17,7 @@ export default function Layout({ children }) {
   const { user, logout, isAdmin } = useAuth();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
+  const visibleNav = useMemo(() => NAV.filter((n) => !n.adminOnly || isAdmin), [isAdmin]);
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white flex flex-col">
@@ -43,7 +44,7 @@ export default function Layout({ children }) {
           </div>
         </div>
         <nav className={`md:flex ${open ? "block" : "hidden"} border-t border-zinc-900 md:border-t-0 md:border-b md:border-zinc-900 overflow-x-auto`}>
-          {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
+          {visibleNav.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
