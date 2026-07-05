@@ -1,0 +1,69 @@
+{
+  "theme_and_archetype": {
+    "domain": "Snooker Parlour / Point of Sale",
+    "theme": "dark",
+    "archetype": "Archetype 2 (Performance Pro)",
+    "rationale": "High-visibility command center feel for quick POS actions in a dark snooker environment. Dark Obsidian background with vibrant snooker green accents for active tables."
+  },
+  "colors": {
+    "background": "#0A0A0A",
+    "surface": "#141414",
+    "primary": "#10B981", 
+    "primary_hover": "#059669",
+    "secondary": "#F59E0B",
+    "danger": "#EF4444",
+    "text_main": "#FFFFFF",
+    "text_muted": "#A1A1AA",
+    "border": "#27272A",
+    "table_states": {
+      "available": "border-zinc-800 bg-zinc-900",
+      "running": "border-[#10B981] bg-[#10B981]/10",
+      "paused": "border-[#F59E0B] bg-[#F59E0B]/10"
+    }
+  },
+  "typography": {
+    "heading_font": "Barlow Condensed",
+    "body_font": "Inter",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg font-semibold",
+      "body": "text-base text-zinc-300 leading-relaxed",
+      "label": "text-xs font-bold uppercase tracking-[0.2em] text-zinc-400"
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous spacing inside containers. Tactical grid.",
+    "dashboard_grid": "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6",
+    "container_padding": "p-4 sm:p-6 lg:p-8",
+    "card_padding": "p-4 sm:p-6",
+    "border_radius": "rounded-md",
+    "alignment_rules": "Left-align data/forms. Center-align empty states. Optical alignment for icons."
+  },
+  "component_guidelines": {
+    "navigation_header": "Solid bg-[#0A0A0A] with 1px border-b border-zinc-800. Sticky positioning with z-50. Must show 'South Point Snooker Academy'. Navigation visible on desktop.",
+    "table_cards": "Flat solid background with 1px border. Highlight running state with inner glow or primary color border.",
+    "buttons": "High contrast. Primary action (Open Table): bg-[#10B981] text-[#0A0A0A]. Secondary: bg-zinc-800 text-white. Use focus:ring-2 focus:ring-[#10B981].",
+    "modals": "Use Shadcn Dialog. Solid dark background. No glassmorphism.",
+    "inputs": "Shadcn Input/Select. bg-zinc-900 border-zinc-800 focus:border-[#10B981]."
+  },
+  "motion_and_interactions": {
+    "hover_states": "All buttons and cards must have transition-colors duration-200.",
+    "active_states": "active:scale-95 duration-100 on interactive buttons.",
+    "focus_states": "Clear focus rings for accessibility."
+  },
+  "icons_and_assets": {
+    "library": "lucide-react",
+    "usage": "Use icons for Table Status, Snacks, Billing, etc."
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: Use .js or .jsx extensions for all React components, NOT .tsx.",
+    "CRITICAL: Add `data-testid` attributes to ALL interactive elements (buttons, inputs, dialogs, forms). Use kebab-case (e.g., data-testid='open-table-btn').",
+    "Ensure Shadcn UI components are installed and customized to match the Dark/Green performance archetype.",
+    "Implement responsive grids. The POS will be used on mobile browsers by cashiers, so modal inputs and table cards must be fully usable on small screens.",
+    "Use pure HTML/Tailwind for main layout structures; use Shadcn strictly for interactive logic (Dialogs, Dropdowns, Tabs).",
+    "Format all currency values using ₹ (INR) symbol.",
+    "Ensure table cards actively show running timers and current bill calculated dynamically."
+  ]
+}
