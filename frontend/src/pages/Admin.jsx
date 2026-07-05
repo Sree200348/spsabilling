@@ -15,6 +15,7 @@ export default function Admin() {
     { k: "business", label: "Business" },
     { k: "tables", label: "Tables" },
     { k: "users", label: "Users" },
+    { k: "audit", label: "Audit Log" },
     { k: "data", label: "Data" },
   ];
   return (
@@ -31,7 +32,52 @@ export default function Admin() {
       {tab === "business" && <BusinessTab />}
       {tab === "tables" && <TablesTab />}
       {tab === "users" && <UsersTab />}
+      {tab === "audit" && <AuditTab />}
       {tab === "data" && <DataTab />}
+    </div>
+  );
+}
+
+function AuditTab() {
+  const [logs, setLogs] = useState([]);
+  const [filter, setFilter] = useState({ username: "", action: "", from_date: "", to_date: "" });
+  async function load() {
+    try {
+      const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v));
+      const r = await api.get("/audit/logs", { params });
+      setLogs(r.data);
+    } catch (e) { toast.error(apiErr(e)); }
+  }
+  useEffect(() => { load(); }, []);
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+        <Input data-testid="audit-username" placeholder="Username" value={filter.username} onChange={(e) => setFilter({ ...filter, username: e.target.value })} className="bg-zinc-900 border-zinc-800" />
+        <Input data-testid="audit-action" placeholder="Action (e.g. session_close)" value={filter.action} onChange={(e) => setFilter({ ...filter, action: e.target.value })} className="bg-zinc-900 border-zinc-800" />
+        <Input data-testid="audit-from" type="date" value={filter.from_date?.slice(0,10) || ""} onChange={(e) => setFilter({ ...filter, from_date: e.target.value ? new Date(e.target.value).toISOString() : "" })} className="bg-zinc-900 border-zinc-800" />
+        <Input data-testid="audit-to" type="date" value={filter.to_date?.slice(0,10) || ""} onChange={(e) => setFilter({ ...filter, to_date: e.target.value ? new Date(e.target.value + "T23:59:59").toISOString() : "" })} className="bg-zinc-900 border-zinc-800" />
+        <Button onClick={load} className="bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold" data-testid="audit-run">Filter</Button>
+      </div>
+      <div className="border border-zinc-800 rounded-md overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-900 text-xs uppercase tracking-wider text-zinc-400">
+            <tr><th className="text-left p-3">When</th><th className="text-left p-3">User</th><th className="text-left p-3">Role</th><th className="text-left p-3">Action</th><th className="text-left p-3">Entity</th><th className="text-left p-3">Details</th></tr>
+          </thead>
+          <tbody>
+            {logs.map(l => (
+              <tr key={l.id} className="border-t border-zinc-800">
+                <td className="p-3 text-xs whitespace-nowrap">{new Date(l.created_at).toLocaleString()}</td>
+                <td className="p-3 font-semibold">{l.username}</td>
+                <td className="p-3"><span className={l.role === "admin" ? "text-[#10B981]" : "text-zinc-300"}>{(l.role || "").toUpperCase()}</span></td>
+                <td className="p-3"><span className="text-[#10B981] uppercase text-xs tracking-wider">{l.action}</span></td>
+                <td className="p-3 text-xs text-zinc-400">{l.entity_type} {l.entity_id ? `· ${l.entity_id.slice(0,8)}…` : ""}</td>
+                <td className="p-3 text-xs text-zinc-400 font-mono">{l.details && Object.keys(l.details).length ? JSON.stringify(l.details) : "—"}</td>
+              </tr>
+            ))}
+            {!logs.length && <tr><td colSpan="6" className="p-6 text-center text-zinc-500">No log entries</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

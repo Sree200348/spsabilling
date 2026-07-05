@@ -53,6 +53,17 @@ export default function InvoiceModal({ invoice, onClose }) {
               ))}
             </div>
           )}
+          {invoice.per_player && invoice.per_player.length > 1 && (
+            <div className="border-t border-dashed border-black pt-2 mb-2">
+              <div className="font-bold text-xs uppercase mb-1">Per-Player Split</div>
+              {invoice.per_player.map((pp, i) => (
+                <div key={i} className="mb-1">
+                  <div className="flex justify-between font-semibold"><span>{pp.name} ({pp.share_percent}%)</span><span>{fmt(pp.subtotal)}</span></div>
+                  <div className="text-[10px] text-zinc-600 flex justify-between"><span>Table {fmt(pp.table_share)} · Snacks {fmt(pp.snacks_share)}</span></div>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="border-t border-dashed border-black pt-2 space-y-1">
             <Ln k="Table amount" v={fmt(invoice.table_amount)} />
             <Ln k="Snacks total" v={fmt(invoice.snacks_total)} />

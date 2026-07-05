@@ -85,7 +85,7 @@ export default function Dashboard() {
               {s ? (
                 <>
                   <div className="text-sm space-y-1 mb-3">
-                    <div className="flex justify-between"><span className="text-zinc-500">Player</span><span className="font-semibold truncate max-w-[60%] text-right">{s.player_name || "—"}</span></div>
+                    <div className="flex justify-between"><span className="text-zinc-500">Player</span><span className="font-semibold truncate max-w-[60%] text-right">{s.players && s.players.length > 1 ? `${s.players.map(p => p.name).join(", ")}` : (s.player_name || "—")}</span></div>
                     <div className="flex justify-between"><span className="text-zinc-500">Start</span><span>{fmtTime(s.entries[s.entries.length - 1].start_time)}</span></div>
                     <div className="flex justify-between items-center"><span className="text-zinc-500 flex items-center gap-1"><Timer size={12}/> Time</span><span className="font-mono text-[#10B981]" data-testid={`table-timer-${t.name.replace(/\s+/g, '-')}`}>{fmtDuration(live.totalBillable)}</span></div>
                   </div>

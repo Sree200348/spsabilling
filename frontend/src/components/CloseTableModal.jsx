@@ -43,6 +43,11 @@ export default function CloseTableModal({ session, onClose, onDone }) {
     setPayments(p);
   }
   function splitEqual() {
+    const pp = preview?.billing?.per_player || [];
+    if (pp.length > 1) {
+      setPayments(pp.map(x => ({ method: "cash", amount: Math.round(x.subtotal * 100) / 100 })));
+      return;
+    }
     const n = Number(session.num_players || 1);
     const total = preview?.billing?.final_amount || 0;
     const each = Math.round((total / n) * 100) / 100;
@@ -124,6 +129,23 @@ export default function CloseTableModal({ session, onClose, onDone }) {
                   </div>
                 ))}
               </div>
+              {b.per_player && b.per_player.length > 1 && (
+                <div className="mt-4 border-t border-zinc-800 pt-3">
+                  <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Per-Player Breakdown</div>
+                  <div className="space-y-1">
+                    {b.per_player.map((pp) => (
+                      <div key={pp.player_local_id} className="text-xs border border-zinc-800 rounded p-2" data-testid={`per-player-${pp.name}`}>
+                        <div className="flex justify-between font-semibold">
+                          <span>{pp.name} <span className="text-zinc-500">({pp.share_percent}%)</span></span>
+                          <span className="text-[#10B981]">{fmt(pp.subtotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-zinc-400"><span>Table share</span><span>{fmt(pp.table_share)}</span></div>
+                        <div className="flex justify-between text-zinc-400"><span>Snacks</span><span>{fmt(pp.snacks_share)}</span></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-4 space-y-1 text-sm border-t border-zinc-800 pt-3">
                 <Row k="Total Paid" v={fmt(totalPaid)} />
                 <Row k="Credit / Balance" v={fmt(credit)} accent={credit > 0} />

@@ -90,6 +90,22 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+# ---------- Audit Log ----------
+async def audit(user: Optional[dict], action: str, entity_type: str = "", entity_id: str = "", details: Optional[dict] = None):
+    doc = {
+        "id": new_id(),
+        "user_id": (user or {}).get("id"),
+        "username": (user or {}).get("username", "system"),
+        "role": (user or {}).get("role", ""),
+        "action": action,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "details": details or {},
+        "created_at": iso(now_utc()),
+    }
+    await db.audit_logs.insert_one(doc)
+
+
 # ---------- Models ----------
 class LoginReq(BaseModel):
     username: str
@@ -127,6 +143,13 @@ class InventoryIn(BaseModel):
     low_stock_alert: int = 5
 
 
+class SessionPlayerIn(BaseModel):
+    name: str
+    mobile: Optional[str] = ""
+    player_id: Optional[str] = None
+    ratio: float = 1.0
+
+
 class OpenSessionReq(BaseModel):
     table_id: str
     player_name: str
@@ -135,11 +158,13 @@ class OpenSessionReq(BaseModel):
     num_players: int = 1
     remarks: Optional[str] = ""
     start_time: Optional[str] = None  # ISO
+    players: List[SessionPlayerIn] = []  # multi-player list
 
 
 class SnackAddReq(BaseModel):
     item_id: str
     qty: int = 1
+    assigned_to: Optional[str] = None  # local session player id or None (shared)
 
 
 class SwitchReq(BaseModel):
@@ -245,6 +270,37 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
     if final < 0:
         final = 0.0
 
+    # Per-player breakdown
+    players_list = session.get("players", []) or []
+    per_player = []
+    if players_list:
+        total_ratio = sum(max(0.0, float(p.get("ratio", 1))) for p in players_list) or 1.0
+        for pl in players_list:
+            share_ratio = max(0.0, float(pl.get("ratio", 1))) / total_ratio
+            table_share = round(total_table_amount * share_ratio, 2)
+            # Snacks: sum items assigned to this player + shared items prorated by ratio
+            direct = 0.0
+            shared = 0.0
+            for s in session.get("snacks", []):
+                if s.get("assigned_to") == pl["id"]:
+                    direct += s["total"]
+                elif not s.get("assigned_to"):
+                    shared += s["total"]
+            snack_share = round(direct + shared * share_ratio, 2)
+            # Membership discount only if player has own membership_id resolved separately.
+            # For preview we look up by player_id if provided in this player.
+            p_final = round(table_share + snack_share, 2)
+            per_player.append({
+                "player_local_id": pl["id"],
+                "player_id": pl.get("player_id"),
+                "name": pl.get("name"),
+                "ratio": pl.get("ratio", 1),
+                "share_percent": round(share_ratio * 100, 2),
+                "table_share": table_share,
+                "snacks_share": snack_share,
+                "subtotal": p_final,
+            })
+
     return {
         "entries": entries_billing,
         "table_amount": round(total_table_amount, 2),
@@ -257,6 +313,7 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
         "total_billable_seconds": total_billable_secs,
         "total_paused_seconds": total_paused_secs,
         "membership_percent": mem_pct,
+        "per_player": per_player,
     }
 
 
@@ -267,6 +324,7 @@ async def login(body: LoginReq):
     if not user or not verify_pw(body.password, user["password_hash"]):
         raise HTTPException(401, "Invalid credentials")
     token = create_token(user["id"], user["username"], user["role"])
+    await audit({"id": user["id"], "username": user["username"], "role": user["role"]}, "login", "user", user["id"])
     return {
         "token": token,
         "user": {"id": user["id"], "username": user["username"], "role": user["role"], "name": user.get("name", "")},
@@ -516,20 +574,41 @@ async def open_session(body: OpenSessionReq, _: dict = Depends(get_current_user)
         "end_time": None,
         "pauses": [],
     }
+    # Build multi-player list. If none supplied, create one entry from primary.
+    players_list = []
+    if body.players:
+        for p in body.players:
+            players_list.append({
+                "id": new_id(),
+                "name": p.name,
+                "mobile": p.mobile or "",
+                "player_id": p.player_id,
+                "ratio": max(0.0, float(p.ratio or 1.0)),
+            })
+    else:
+        players_list.append({
+            "id": new_id(),
+            "name": body.player_name,
+            "mobile": body.mobile or "",
+            "player_id": body.player_id,
+            "ratio": 1.0,
+        })
     session = {
         "id": new_id(),
-        "player_id": body.player_id,
-        "player_name": body.player_name,
-        "player_mobile": body.mobile or "",
-        "num_players": body.num_players,
+        "player_id": body.player_id or (players_list[0].get("player_id") if players_list else None),
+        "player_name": body.player_name or players_list[0]["name"],
+        "player_mobile": body.mobile or players_list[0].get("mobile", ""),
+        "num_players": body.num_players or len(players_list),
         "remarks": body.remarks or "",
         "entries": [entry],
         "current_table_id": table["id"],
         "snacks": [],
+        "players": players_list,
         "status": "running",
         "created_at": iso(now_utc()),
     }
     await db.sessions.insert_one(session)
+    await audit(_, "session_open", "session", session["id"], {"table": table["name"], "player": session["player_name"], "players": [p["name"] for p in players_list]})
     session.pop("_id", None)
     return session
 
@@ -550,6 +629,7 @@ async def pause_session(sid: str, _: dict = Depends(get_current_user)):
     entries = s["entries"]
     entries[-1].setdefault("pauses", []).append({"start": iso(now_utc()), "end": None})
     await db.sessions.update_one({"id": sid}, {"$set": {"entries": entries, "status": "paused"}})
+    await audit(_, "session_pause", "session", sid)
     return {"ok": True}
 
 
@@ -563,6 +643,7 @@ async def resume_session(sid: str, _: dict = Depends(get_current_user)):
     if pauses and not pauses[-1].get("end"):
         pauses[-1]["end"] = iso(now_utc())
     await db.sessions.update_one({"id": sid}, {"$set": {"entries": entries, "status": "running"}})
+    await audit(_, "session_resume", "session", sid)
     return {"ok": True}
 
 
@@ -594,6 +675,7 @@ async def switch_table(sid: str, body: SwitchReq, _: dict = Depends(get_current_
         "pauses": [],
     })
     await db.sessions.update_one({"id": sid}, {"$set": {"entries": entries, "current_table_id": new_table["id"], "status": "running"}})
+    await audit(_, "session_switch", "session", sid, {"to": new_table["name"]})
     return {"ok": True}
 
 
@@ -617,6 +699,7 @@ async def add_snack(sid: str, body: SnackAddReq, _: dict = Depends(get_current_u
         "price": item["selling_price"],
         "total": round(item["selling_price"] * body.qty, 2),
         "added_at": iso(now_utc()),
+        "assigned_to": body.assigned_to or None,
     }
     snacks = s.get("snacks", []) + [snack]
     await db.sessions.update_one({"id": sid}, {"$set": {"snacks": snacks}})
@@ -737,6 +820,7 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
         "total_session_seconds": billing["total_session_seconds"],
         "total_billable_seconds": billing["total_billable_seconds"],
         "total_paused_seconds": billing["total_paused_seconds"],
+        "per_player": billing["per_player"],
         "created_at": iso(now_utc()),
         "created_by": user["username"],
     }
@@ -753,6 +837,10 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
         await db.players.update_one({"id": player["id"]}, {
             "$inc": {"total_visits": 1, "total_spent": final, "credit_balance": credit_amount}
         })
+
+    await audit(user, "session_close", "invoice", invoice["id"], {
+        "invoice": invoice_number, "final": final, "paid": total_paid, "credit": credit_amount, "player": s.get("player_name")
+    })
 
     invoice.pop("_id", None)
     return invoice
@@ -840,8 +928,33 @@ async def credit_payment(body: CreditPaymentReq, user: dict = Depends(get_curren
     }
     await db.credit_payments.insert_one(doc)
     await db.players.update_one({"id": body.player_id}, {"$inc": {"credit_balance": -round(body.amount, 2)}})
+    await audit(user, "credit_payment", "player", body.player_id, {"amount": body.amount, "method": body.method})
     doc.pop("_id", None)
     return doc
+
+
+# ---------- Audit Log Endpoint ----------
+@api.get("/audit/logs")
+async def audit_logs(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    username: Optional[str] = None,
+    action: Optional[str] = None,
+    limit: int = 500,
+    _: dict = Depends(require_admin),
+):
+    q: Dict[str, Any] = {}
+    if from_date or to_date:
+        q["created_at"] = {}
+        if from_date:
+            q["created_at"]["$gte"] = from_date
+        if to_date:
+            q["created_at"]["$lte"] = to_date
+    if username:
+        q["username"] = username
+    if action:
+        q["action"] = action
+    return await db.audit_logs.find(q, {"_id": 0}).sort("created_at", -1).to_list(min(limit, 2000))
 
 
 # ---------- Reports ----------

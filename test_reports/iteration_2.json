@@ -1,0 +1,31 @@
+{
+  "summary": "Verified new multi-player, per-player billing, snack assignment, and audit log features. Backend endpoints and frontend UI both work as specified. One minor testid inconsistency noted for the first ratio input.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "Admin & cashier login return valid JWT; login is audited (login action visible for both users).",
+    "Cashier GET /api/audit/logs -> 403 'Admin access required' as required by role gating.",
+    "Admin GET /api/audit/logs returns list with When/User/Role/Action/Entity/Details fields; filters (username=admin, action=session_open) work.",
+    "POST /api/sessions/open accepts players[] array (Test Amit ratio=2, Test Priya ratio=1); returns session with players list, ratios preserved.",
+    "POST /api/sessions/{id}/snacks accepts assigned_to (local player id) and null (shared); snacks stored with assigned_to field.",
+    "GET /api/sessions/{id}/preview-bill returns billing.per_player array with correct share_percent (66.67/33.33), table_share, snacks_share (Amit direct 40 + 20*2/3 shared = 53.33; Priya 20*1/3 = 6.67), subtotal.",
+    "POST /api/sessions/{id}/close writes per_player onto invoice (invoice INV-20260705-0006 contains per_player breakdown, payment_status=paid).",
+    "session_open, session_close, and login audit entries generated with correct details (table name, player list).",
+    "UI: /admin -> Audit Log tab (admin-tab-audit) renders; audit-username, audit-action, audit-from, audit-to, audit-run testids present; Filter button loads 10 rows with expected columns.",
+    "UI: Open Table modal shows multi-player controls; open-add-player-btn adds Player 2 with open-name-input-1, open-ratio-input-1, open-remove-player-1; open-confirm-btn present.",
+    "Single-player regression: existing running session (Table 1) still renders correctly on Dashboard; single-player close path continues to write invoice."
+  ],
+  "failed": [
+    {
+      "area": "Frontend - OpenTableModal testid",
+      "issue": "data-testid='open-ratio-input-0' returned count=0, while open-ratio-input-1 (after Add Player) is found=1. The ratio input for Player 1 is visually present and functional but its testid appears to differ from the spec.",
+      "evidence": "Playwright: 'open-ratio-input-0: found=0' but Player 1 ratio field is visible in modal screenshot; open-ratio-input-1 found=1 after clicking Add Player.",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "Verify data-testid on the first player's ratio input in OpenTableModal.jsx is 'open-ratio-input-0' (may be applied to wrapper or omitted for index 0). Minor - not a blocker."
+  ],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}
