@@ -129,8 +129,8 @@ export default function Reports() {
               {!Object.keys(data.by_payment_method).length && <div className="text-zinc-500 text-sm">No data</div>}
             </Card>
             <Card title="Top Players">
-              {data.top_players.map((p, i) => (
-                <div key={i} className="flex justify-between border-b border-zinc-800 py-1 text-sm"><span>{p.player_name}</span><span>{fmt(p.spent)}</span></div>
+              {data.top_players.map((p) => (
+                <div key={p.player_name} className="flex justify-between border-b border-zinc-800 py-1 text-sm"><span>{p.player_name}</span><span>{fmt(p.spent)}</span></div>
               ))}
               {!data.top_players.length && <div className="text-zinc-500 text-sm">No data</div>}
             </Card>
@@ -147,8 +147,8 @@ export default function Reports() {
 
           <Card title="Snacks Sales">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-              {data.snack_sales.map((s, i) => (
-                <div key={i} className="border border-zinc-800 rounded-md p-2"><div className="font-semibold">{s.name}</div><div className="text-xs text-zinc-500">Qty {s.qty}</div><div className="text-[#10B981]">{fmt(s.revenue)}</div></div>
+              {data.snack_sales.map((s) => (
+                <div key={s.name} className="border border-zinc-800 rounded-md p-2"><div className="font-semibold">{s.name}</div><div className="text-xs text-zinc-500">Qty {s.qty}</div><div className="text-[#10B981]">{fmt(s.revenue)}</div></div>
               ))}
               {!data.snack_sales.length && <div className="text-zinc-500 col-span-full">No sales</div>}
             </div>

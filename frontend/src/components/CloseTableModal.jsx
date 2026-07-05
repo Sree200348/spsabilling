@@ -14,7 +14,7 @@ const METHODS = ["cash", "upi", "card", "credit"];
 export default function CloseTableModal({ session, onClose, onDone }) {
   const [manualDiscount, setManualDiscount] = useState(0);
   const [applyMemToSnacks, setApplyMemToSnacks] = useState(false);
-  const [payments, setPayments] = useState([{ method: "cash", amount: 0 }]);
+  const [payments, setPayments] = useState([{ _key: crypto.randomUUID(), method: "cash", amount: 0 }]);
   const [preview, setPreview] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -33,7 +33,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
     cp[i] = { ...cp[i], [k]: k === "amount" ? Number(v) || 0 : v };
     setPayments(cp);
   }
-  function addPay() { setPayments([...payments, { method: "cash", amount: 0 }]); }
+  function addPay() { setPayments([...payments, { _key: crypto.randomUUID(), method: "cash", amount: 0 }]); }
   function removePay(i) { setPayments(payments.filter((_, x) => x !== i)); }
   function fillFull() {
     const p = [...payments];
@@ -45,13 +45,13 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   function splitEqual() {
     const pp = preview?.billing?.per_player || [];
     if (pp.length > 1) {
-      setPayments(pp.map(x => ({ method: "cash", amount: Math.round(x.subtotal * 100) / 100 })));
+      setPayments(pp.map(x => ({ _key: crypto.randomUUID(), method: "cash", amount: Math.round(x.subtotal * 100) / 100 })));
       return;
     }
     const n = Number(session.num_players || 1);
     const total = preview?.billing?.final_amount || 0;
     const each = Math.round((total / n) * 100) / 100;
-    setPayments(Array.from({ length: n }, (_, i) => ({ method: "cash", amount: i === n - 1 ? total - each * (n - 1) : each })));
+    setPayments(Array.from({ length: n }, (_, i) => ({ _key: crypto.randomUUID(), method: "cash", amount: i === n - 1 ? total - each * (n - 1) : each })));
   }
 
   const totalPaid = payments.reduce((a, p) => a + Number(p.amount || 0), 0);
@@ -84,8 +84,8 @@ export default function CloseTableModal({ session, onClose, onDone }) {
           <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-3">
               <div className="text-xs uppercase tracking-widest text-zinc-400">Session</div>
-              {b.entries.map((e, i) => (
-                <div key={i} className="border border-zinc-800 p-3 rounded-md text-sm">
+              {b.entries.map((e) => (
+                <div key={`${e.table_id}-${e.start_time}`} className="border border-zinc-800 p-3 rounded-md text-sm">
                   <div className="flex justify-between font-semibold"><span>{e.table_name}</span><span>{fmt(e.amount)}</span></div>
                   <div className="text-xs text-zinc-400">Billable: {fmtDuration(e.billable_seconds)} @ ₹{e.hourly_rate}/hr</div>
                 </div>
@@ -120,7 +120,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
               </div>
               <div className="space-y-2">
                 {payments.map((p, i) => (
-                  <div key={i} className="flex gap-2 items-center">
+                  <div key={p._key} className="flex gap-2 items-center">
                     <select data-testid={`pay-method-${i}`} value={p.method} onChange={(e) => setPay(i, "method", e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded h-9 px-2 text-sm">
                       {METHODS.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}
                     </select>

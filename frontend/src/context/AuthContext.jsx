@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/api";
 
 const AuthCtx = createContext(null);
@@ -17,19 +17,24 @@ export function AuthProvider({ children }) {
     api.get("/auth/me").then((r) => setUser(r.data)).catch(() => setUser(false)).finally(() => setReady(true));
   }, []);
 
-  async function login(username, password) {
+  const login = useCallback(async (username, password) => {
     const { data } = await api.post("/auth/login", { username, password });
     localStorage.setItem("sp_token", data.token);
     setUser(data.user);
     return data.user;
-  }
+  }, []);
 
-  function logout() {
+  const logout = useCallback(() => {
     localStorage.removeItem("sp_token");
     setUser(false);
-  }
+  }, []);
 
-  return <AuthCtx.Provider value={{ user, ready, login, logout, isAdmin: user?.role === "admin" }}>{children}</AuthCtx.Provider>;
+  const value = useMemo(
+    () => ({ user, ready, login, logout, isAdmin: user?.role === "admin" }),
+    [user, ready, login, logout]
+  );
+
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

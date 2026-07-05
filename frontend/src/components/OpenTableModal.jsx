@@ -9,7 +9,7 @@ import { api, apiErr } from "@/api";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 
-const EMPTY_P = () => ({ name: "", mobile: "", player_id: "", ratio: 1 });
+const EMPTY_P = () => ({ _key: crypto.randomUUID(), name: "", mobile: "", player_id: "", ratio: 1 });
 
 export default function OpenTableModal({ table, onClose, onDone }) {
   const [players, setPlayers] = useState([EMPTY_P()]);
@@ -59,7 +59,7 @@ export default function OpenTableModal({ table, onClose, onDone }) {
             <Button size="sm" onClick={addP} data-testid="open-add-player-btn" className="bg-zinc-800 hover:bg-zinc-700"><Plus size={12} className="mr-1"/> Add Player</Button>
           </div>
           {players.map((p, i) => (
-            <div key={i} className="border border-zinc-800 rounded-md p-3 space-y-2">
+            <div key={p._key} className="border border-zinc-800 rounded-md p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-xs text-[#10B981] font-bold">PLAYER {i + 1}</div>
                 {players.length > 1 && <Button variant="ghost" size="sm" className="text-red-400 h-7 w-7 p-0" onClick={() => removeP(i)} data-testid={`open-remove-player-${i}`}><Trash2 size={12}/></Button>}

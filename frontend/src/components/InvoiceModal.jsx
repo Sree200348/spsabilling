@@ -35,8 +35,8 @@ export default function InvoiceModal({ invoice, onClose }) {
           </div>
           <div className="border-t border-dashed border-black pt-2 mb-2">
             <div className="font-bold text-xs uppercase mb-1">Table Sessions</div>
-            {invoice.entries.map((e, i) => (
-              <div key={i} className="mb-1">
+            {invoice.entries.map((e) => (
+              <div key={`${e.table_id}-${e.start_time}`} className="mb-1">
                 <div className="flex justify-between"><span>{e.table_name}</span><span>{settings.currency}{e.amount.toFixed(2)}</span></div>
                 <div className="text-[10px] text-zinc-600">{fmtDuration(e.billable_seconds)} @ {settings.currency}{e.hourly_rate}/hr</div>
               </div>
@@ -45,8 +45,8 @@ export default function InvoiceModal({ invoice, onClose }) {
           {invoice.snacks?.length > 0 && (
             <div className="border-t border-dashed border-black pt-2 mb-2">
               <div className="font-bold text-xs uppercase mb-1">Snacks</div>
-              {invoice.snacks.map((s, i) => (
-                <div key={i} className="flex justify-between">
+              {invoice.snacks.map((s) => (
+                <div key={s.id} className="flex justify-between">
                   <span>{s.name} × {s.qty}</span>
                   <span>{settings.currency}{s.total.toFixed(2)}</span>
                 </div>
@@ -56,8 +56,8 @@ export default function InvoiceModal({ invoice, onClose }) {
           {invoice.per_player && invoice.per_player.length > 1 && (
             <div className="border-t border-dashed border-black pt-2 mb-2">
               <div className="font-bold text-xs uppercase mb-1">Per-Player Split</div>
-              {invoice.per_player.map((pp, i) => (
-                <div key={i} className="mb-1">
+              {invoice.per_player.map((pp) => (
+                <div key={pp.player_local_id} className="mb-1">
                   <div className="flex justify-between font-semibold"><span>{pp.name} ({pp.share_percent}%)</span><span>{fmt(pp.subtotal)}</span></div>
                   <div className="text-[10px] text-zinc-600 flex justify-between"><span>Table {fmt(pp.table_share)} · Snacks {fmt(pp.snacks_share)}</span></div>
                 </div>
@@ -78,8 +78,8 @@ export default function InvoiceModal({ invoice, onClose }) {
           {invoice.payments?.length > 0 && (
             <div className="border-t border-dashed border-black pt-2 mt-2 text-xs">
               <div className="font-bold uppercase mb-1">Payments</div>
-              {invoice.payments.map((p, i) => (
-                <div key={i} className="flex justify-between"><span>{p.method.toUpperCase()}</span><span>{fmt(p.amount)}</span></div>
+              {invoice.payments.map((p) => (
+                <div key={`${p.method}-${p.amount}`} className="flex justify-between"><span>{p.method.toUpperCase()}</span><span>{fmt(p.amount)}</span></div>
               ))}
             </div>
           )}
