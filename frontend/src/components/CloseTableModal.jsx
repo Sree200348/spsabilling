@@ -19,6 +19,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   const [saving, setSaving] = useState(false);
   const [ratios, setRatios] = useState({}); // { player_local_id: ratio }
   const [ratiosInit, setRatiosInit] = useState(false);
+  const [tablePayerId, setTablePayerId] = useState("__split");
 
   async function saveRatios(next) {
     try {
@@ -40,7 +41,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
       }
     } catch (e) { toast.error(apiErr(e)); }
   }
-  useEffect(() => { refresh(); }, [manualDiscount, applyMemToSnacks]);
+  useEffect(() => { refresh(); }, [manualDiscount, applyMemToSnacks, tablePayerId]);
 
   function setPay(i, k, v) {
     const cp = [...payments];
@@ -72,19 +73,24 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   const final = preview?.billing?.final_amount || 0;
   const credit = Math.max(0, final - totalPaid);
 
-  async function submit() {
-    if (credit > 0 && !session.player_id) return toast.error("Attach a player before creating credit");
+  async function submitAndReturn() {
+    if (credit > 0 && !session.player_id) { toast.error("Attach a player before creating credit"); return null; }
     setSaving(true);
     try {
       const r = await api.post(`/sessions/${session.id}/close`, {
         manual_discount: Number(manualDiscount) || 0,
         apply_membership_to_snacks: applyMemToSnacks,
         payments,
+        table_payer_id: tablePayerId && tablePayerId !== "__split" ? tablePayerId : null,
       });
-      toast.success("Bill generated");
-      onDone(r.data);
-    } catch (e) { toast.error(apiErr(e)); }
+      return r.data;
+    } catch (e) { toast.error(apiErr(e)); return null; }
     finally { setSaving(false); }
+  }
+
+  async function submit() {
+    const inv = await submitAndReturn();
+    if (inv) { toast.success("Bill generated"); onDone(inv); }
   }
 
   const b = preview?.billing;
@@ -145,6 +151,11 @@ export default function CloseTableModal({ session, onClose, onDone }) {
               </div>
               {b.per_player && b.per_player.length > 1 && (
                 <div className="mt-4 border-t border-zinc-800 pt-3">
+                  <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Table Paid By</div>
+                  <select data-testid="table-payer-select" value={tablePayerId} onChange={(e) => setTablePayerId(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded h-9 px-2 text-sm mb-3">
+                    <option value="__split">Split by ratio (default)</option>
+                    {b.per_player.map(pp => <option key={pp.player_local_id} value={pp.player_local_id}>Only {pp.name} pays for table</option>)}
+                  </select>
                   <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Per-Player Breakdown &amp; Ratio</div>
                   <div className="space-y-2">
                     {b.per_player.map((pp) => (
@@ -190,6 +201,25 @@ export default function CloseTableModal({ session, onClose, onDone }) {
         <DialogFooter>
           <Button variant="outline" onClick={onClose} className="border-zinc-700" data-testid="close-cancel-btn">Cancel</Button>
           <Button onClick={submit} disabled={saving} className="bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold" data-testid="close-save-btn">Generate Bill</Button>
+          <Button
+            onClick={async () => {
+              const invoice = await submitAndReturn();
+              if (!invoice) return;
+              try {
+                const players = (preview?.session?.players || []).map(p => ({ name: p.name, mobile: p.mobile || "", player_id: p.player_id || null, ratio: 1 }));
+                await api.post("/sessions/open", {
+                  table_id: session.current_table_id, player_name: players[0]?.name || session.player_name,
+                  mobile: players[0]?.mobile || "", player_id: players[0]?.player_id || null,
+                  num_players: players.length, remarks: "New frame", players,
+                });
+                toast.success("New frame started");
+                onDone(invoice);
+              } catch (e) { toast.error(apiErr(e)); }
+            }}
+            disabled={saving}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+            data-testid="close-and-open-btn"
+          >Close &amp; New Frame</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

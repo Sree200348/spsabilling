@@ -11,6 +11,7 @@ import SwitchTableModal from "@/components/SwitchTableModal";
 import AttachPlayerModal from "@/components/AttachPlayerModal";
 import CloseTableModal from "@/components/CloseTableModal";
 import InvoiceModal from "@/components/InvoiceModal";
+import WalkInSnacksModal from "@/components/WalkInSnacksModal";
 
 export default function Dashboard() {
   const [tables, setTables] = useState([]);
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const [attachFor, setAttachFor] = useState(null);
   const [closeFor, setCloseFor] = useState(null);
   const [invoice, setInvoice] = useState(null);
+  const [walkInOpen, setWalkInOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -55,10 +57,11 @@ export default function Dashboard() {
           <div className="text-xs text-[#10B981] font-bold uppercase tracking-[0.3em]">Live Ops</div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>TABLE DASHBOARD</h1>
         </div>
-        <div className="flex gap-2 text-xs">
+        <div className="flex gap-2 text-xs items-center">
           <Badge className="bg-zinc-800 text-zinc-300 border-zinc-700">{tables.length} Tables</Badge>
           <Badge className="bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30">{sessions.filter(s => s.status === "running").length} Running</Badge>
           <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30">{sessions.filter(s => s.status === "paused").length} Paused</Badge>
+          <Button data-testid="walkin-open-btn" onClick={() => setWalkInOpen(true)} className="ml-2 bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold h-8"><Coffee size={14} className="mr-1"/> Walk-in Snacks</Button>
         </div>
       </div>
 
@@ -119,6 +122,7 @@ export default function Dashboard() {
       {switchFor && <SwitchTableModal session={switchFor} tables={tables} sessions={sessions} onClose={() => setSwitchFor(null)} onDone={() => { setSwitchFor(null); load(); }} />}
       {attachFor && <AttachPlayerModal session={attachFor} onClose={() => setAttachFor(null)} onDone={() => { setAttachFor(null); load(); }} />}
       {closeFor && <CloseTableModal session={closeFor} onClose={() => setCloseFor(null)} onDone={(inv) => { setCloseFor(null); setInvoice(inv); load(); }} />}
+      {walkInOpen && <WalkInSnacksModal onClose={() => setWalkInOpen(false)} onDone={(inv) => { setWalkInOpen(false); setInvoice(inv); load(); }} />}
       {invoice && <InvoiceModal invoice={invoice} onClose={() => setInvoice(null)} />}
     </div>
   );

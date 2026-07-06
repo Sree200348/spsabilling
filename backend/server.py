@@ -171,6 +171,26 @@ class RatiosReq(BaseModel):
     ratios: Dict[str, float]
 
 
+class AddPlayerToSessionReq(BaseModel):
+    name: str
+    mobile: Optional[str] = ""
+    player_id: Optional[str] = None
+    ratio: float = 1.0
+
+
+class PaymentSplit(BaseModel):
+    method: str  # cash | upi | card | credit
+    amount: float
+
+
+class WalkInSaleReq(BaseModel):
+    customer_name: str = "Walk-in"
+    mobile: Optional[str] = ""
+    player_id: Optional[str] = None
+    items: List[Dict[str, Any]] = []  # [{item_id, qty}]
+    payments: List[PaymentSplit] = []
+
+
 class SwitchReq(BaseModel):
     new_table_id: str
 
@@ -179,16 +199,12 @@ class AttachPlayerReq(BaseModel):
     player_id: str
 
 
-class PaymentSplit(BaseModel):
-    method: str  # cash | upi | card | credit
-    amount: float
-
-
 class CloseReq(BaseModel):
     manual_discount: float = 0
     apply_membership_to_snacks: bool = False
     payments: List[PaymentSplit] = []
     end_time: Optional[str] = None
+    table_payer_id: Optional[str] = None  # if set, one player pays entire table amount
 
 
 class CreditPaymentReq(BaseModel):
@@ -277,12 +293,43 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
     # Per-player breakdown
     players_list = session.get("players", []) or []
     per_player = []
+    table_payer_id = session.get("_table_payer_id")
     if players_list:
-        total_ratio = sum(max(0.0, float(p.get("ratio", 1))) for p in players_list) or 1.0
+        # Presence billable seconds for each player from joined_at → now/end
+        session_start = datetime.fromisoformat(session["entries"][0]["start_time"]) if session.get("entries") else now_utc()
+        def _presence_secs(pl):
+            joined = pl.get("joined_at") or iso(session_start)
+            j = datetime.fromisoformat(joined)
+            total_secs = 0
+            for e in session.get("entries", []):
+                e_start = datetime.fromisoformat(e["start_time"])
+                e_end = datetime.fromisoformat(e["end_time"]) if e.get("end_time") else (ref_time or now_utc())
+                seg_start = max(e_start, j)
+                if seg_start >= e_end:
+                    continue
+                seg = (e_end - seg_start).total_seconds()
+                pause = 0
+                for p in e.get("pauses", []):
+                    ps = datetime.fromisoformat(p["start"])
+                    pe = datetime.fromisoformat(p["end"]) if p.get("end") else (ref_time or now_utc())
+                    ov_s = max(ps, seg_start)
+                    ov_e = min(pe, e_end)
+                    if ov_e > ov_s:
+                        pause += (ov_e - ov_s).total_seconds()
+                total_secs += max(0, seg - pause)
+            return total_secs
+        weights = []
         for pl in players_list:
-            share_ratio = max(0.0, float(pl.get("ratio", 1))) / total_ratio
-            table_share = round(total_table_amount * share_ratio, 2)
-            # Snacks: sum items assigned to this player + shared items prorated by ratio
+            pres = _presence_secs(pl)
+            w = pres * max(0.0, float(pl.get("ratio", 1)))
+            weights.append((pl, pres, w))
+        total_w = sum(w for _, _, w in weights) or 1.0
+        for pl, pres, w in weights:
+            share_ratio = w / total_w
+            if table_payer_id:
+                table_share = round(total_table_amount, 2) if pl["id"] == table_payer_id else 0.0
+            else:
+                table_share = round(total_table_amount * share_ratio, 2)
             direct = 0.0
             shared = 0.0
             for s in session.get("snacks", []):
@@ -291,18 +338,13 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
                 elif not s.get("assigned_to"):
                     shared += s["total"]
             snack_share = round(direct + shared * share_ratio, 2)
-            # Membership discount only if player has own membership_id resolved separately.
-            # For preview we look up by player_id if provided in this player.
-            p_final = round(table_share + snack_share, 2)
             per_player.append({
-                "player_local_id": pl["id"],
-                "player_id": pl.get("player_id"),
-                "name": pl.get("name"),
-                "ratio": pl.get("ratio", 1),
+                "player_local_id": pl["id"], "player_id": pl.get("player_id"),
+                "name": pl.get("name"), "ratio": pl.get("ratio", 1),
                 "share_percent": round(share_ratio * 100, 2),
-                "table_share": table_share,
-                "snacks_share": snack_share,
-                "subtotal": p_final,
+                "presence_seconds": int(pres),
+                "table_share": table_share, "snacks_share": snack_share,
+                "subtotal": round(table_share + snack_share, 2),
             })
 
     return {
@@ -580,6 +622,7 @@ async def open_session(body: OpenSessionReq, _: dict = Depends(get_current_user)
     }
     # Build multi-player list. If none supplied, create one entry from primary.
     players_list = []
+    _joined = start_time
     if body.players:
         for p in body.players:
             players_list.append({
@@ -588,6 +631,7 @@ async def open_session(body: OpenSessionReq, _: dict = Depends(get_current_user)
                 "mobile": p.mobile or "",
                 "player_id": p.player_id,
                 "ratio": max(0.0, float(p.ratio or 1.0)),
+                "joined_at": _joined,
             })
     else:
         players_list.append({
@@ -596,6 +640,7 @@ async def open_session(body: OpenSessionReq, _: dict = Depends(get_current_user)
             "mobile": body.mobile or "",
             "player_id": body.player_id,
             "ratio": 1.0,
+            "joined_at": _joined,
         })
     session = {
         "id": new_id(),
@@ -750,6 +795,83 @@ async def update_ratios(sid: str, body: RatiosReq, _: dict = Depends(get_current
     return {"ok": True, "players": players}
 
 
+@api.post("/sessions/{sid}/add-player")
+async def add_session_player(sid: str, body: AddPlayerToSessionReq, _: dict = Depends(get_current_user)):
+    s = await db.sessions.find_one({"id": sid})
+    if not s or s["status"] not in ("running", "paused"):
+        raise HTTPException(400, "Session not active")
+    new_p = {
+        "id": new_id(),
+        "name": body.name,
+        "mobile": body.mobile or "",
+        "player_id": body.player_id,
+        "ratio": max(0.0, float(body.ratio or 1)),
+        "joined_at": iso(now_utc()),
+    }
+    players = s.get("players", []) + [new_p]
+    await db.sessions.update_one({"id": sid}, {"$set": {"players": players, "num_players": len(players)}})
+    await audit(_, "session_add_player", "session", sid, {"player": body.name})
+    return new_p
+
+
+@api.post("/walk-in/sale")
+async def walk_in_sale(body: WalkInSaleReq, user: dict = Depends(get_current_user)):
+    if not body.items:
+        raise HTTPException(400, "No items")
+    snacks_docs = []
+    total = 0.0
+    for it in body.items:
+        item = await db.inventory.find_one({"id": it.get("item_id")})
+        if not item:
+            raise HTTPException(404, "Item not found")
+        qty = int(it.get("qty", 1))
+        if qty <= 0 or item["stock"] < qty:
+            raise HTTPException(400, f"Insufficient stock for {item['name']}")
+        line_total = round(item["selling_price"] * qty, 2)
+        snacks_docs.append({
+            "id": new_id(), "item_id": item["id"], "name": item["name"],
+            "qty": qty, "price": item["selling_price"], "total": line_total,
+            "added_at": iso(now_utc()), "assigned_to": None,
+        })
+        total += line_total
+        await db.inventory.update_one({"id": item["id"]}, {"$inc": {"stock": -qty}})
+    total = round(total, 2)
+    paid = round(sum(p.amount for p in body.payments), 2)
+    credit_amount = round(max(0.0, total - paid), 2)
+    if credit_amount > 0 and not body.player_id:
+        raise HTTPException(400, "Credit requires a linked player")
+    invoice_number = await _next_invoice_number()
+    if paid == 0:
+        status = "credit"
+    elif credit_amount > 0:
+        status = "partial"
+    elif len(body.payments) > 1:
+        status = "split"
+    else:
+        status = "paid"
+    invoice = {
+        "id": new_id(), "invoice_number": invoice_number, "session_id": None,
+        "player_id": body.player_id, "player_name": body.customer_name,
+        "player_mobile": body.mobile or "", "entries": [], "snacks": snacks_docs,
+        "table_amount": 0.0, "snacks_total": total, "membership_id": None,
+        "membership_name": None, "membership_percent": 0, "membership_discount": 0,
+        "snacks_discount": 0, "manual_discount": 0, "final_amount": total,
+        "payments": [p.model_dump() for p in body.payments], "amount_paid": paid,
+        "credit_amount": credit_amount, "payment_status": status,
+        "total_session_seconds": 0, "total_billable_seconds": 0, "total_paused_seconds": 0,
+        "per_player": [], "walk_in": True,
+        "created_at": iso(now_utc()), "created_by": user["username"],
+    }
+    await db.invoices.insert_one(invoice)
+    if body.player_id and credit_amount > 0:
+        await db.players.update_one({"id": body.player_id}, {"$inc": {"credit_balance": credit_amount, "total_spent": total}})
+    elif body.player_id:
+        await db.players.update_one({"id": body.player_id}, {"$inc": {"total_spent": total}})
+    await audit(user, "walk_in_sale", "invoice", invoice["id"], {"total": total, "paid": paid})
+    invoice.pop("_id", None)
+    return invoice
+
+
 @api.get("/sessions/{sid}/preview-bill")
 async def preview_bill(sid: str, apply_membership_to_snacks: bool = False, manual_discount: float = 0, _: dict = Depends(get_current_user)):
     s = await db.sessions.find_one({"id": sid}, {"_id": 0})
@@ -788,7 +910,7 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
     membership = await _get_active_membership(player) if player else None
 
     billing = compute_session_billing(
-        {**s, "entries": entries},
+        {**s, "entries": entries, "_table_payer_id": body.table_payer_id},
         membership=membership,
         manual_discount=body.manual_discount,
         apply_membership_to_snacks=body.apply_membership_to_snacks,

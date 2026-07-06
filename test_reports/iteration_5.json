@@ -1,0 +1,70 @@
+{
+  "summary": "Tested 4 recently-added features on Snooker Parlour app. Backend: 5/5 pytest cases passed (walk-in paid, walk-in partial rejected w/o player, walk-in partial creates credit w/ player, add-player prorated billing, single-player table_payer_id at close). Frontend: Walk-in modal + Add Player mid-session work. Two UI-level issues found in Close & Bill flow (see below).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CloseTableModal.jsx",
+        "issue": "Per-Player Breakdown preview does NOT update when user selects a 'Table Paid By' player. After choosing 'Only TESTP1 pays for table', the rows still show split table_shares (0.37/0.37/0.15) instead of 0.89/0/0. Backend at close-time DOES apply table_payer_id correctly (verified via pytest), so the invoice is correct — but the cashier cannot see the effect in the preview and may lose trust in the feature.",
+        "selector": "[data-testid=\"table-payer-select\"] and [data-testid^=\"per-player-\"]",
+        "priority": "HIGH",
+        "root_cause": "useEffect(refresh, [..., tablePayerId]) calls GET /api/sessions/{sid}/preview-bill, but that endpoint's signature is (apply_membership_to_snacks, manual_discount) only — it never receives table_payer_id. So the recomputed billing is always the split-by-ratio version. Fix: add `table_payer_id: Optional[str]` query param to preview_bill and forward it into compute_session_billing via `_table_payer_id`, matching what close_session already does."
+      },
+      {
+        "component": "CloseTableModal.jsx – option element accessibility",
+        "issue": "Console error: 'In HTML, <span> cannot be a child of <option>. This will cause a hydration error.' Radix instrumentation wraps dynamic text in a <span>, breaking native <select><option> semantics.",
+        "selector": "[data-testid=\"table-payer-select\"] > option",
+        "priority": "LOW"
+      },
+      {
+        "component": "CloseTableModal.jsx / WalkInSnacksModal.jsx",
+        "issue": "Console warning: 'DialogContent requires a DialogTitle for the component to be accessible for screen reader users.' Seen when Invoice preview modal opens after save.",
+        "selector": "invoice modal DialogContent",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Close & New Frame on a multi-player session with NO linked main player",
+        "issue": "Clicking 'Close & New Frame' after 'Fill Full' can return 400 'Credit requires a linked player' because the billable seconds tick up between preview and close, creating a tiny credit_amount > 0 while session.player_id is null. Fix options: (a) disable/warn Close & New Frame when session.player_id is null AND payer is not linked, (b) auto-refill full amount at submit-time on client, or (c) let server tolerate rounding-level shortfall for unlinked sessions.",
+        "affected_selectors": ["[data-testid=\"close-and-open-btn\"]", "[data-testid=\"pay-fill-full\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Add `table_payer_id` query param to GET /api/sessions/{sid}/preview-bill so CloseTableModal preview reflects the selection (HIGH).",
+    "Guard 'Close & New Frame' button when session.player_id is null and credit would arise (or auto-recompute paid at click time).",
+    "Suppress hydration warning from Radix span-in-option (wrap option text as plain string, avoid dynamic expression wrap).",
+    "Add DialogTitle (VisuallyHidden if needed) to Invoice preview modal."
+  ],
+  "critical_code_review_comments": [
+    "server.py:876 preview_bill signature missing table_payer_id — creates preview/close divergence (root cause of top UI bug).",
+    "CloseTableModal.jsx:44 refresh() effect depends on tablePayerId but never sends it to the API; consider passing manual client-side recompute instead of round-trip.",
+    "server.py compute_session_billing returns 'membership_percent' only via `mem_pct` variable but the field is referenced at close_session in invoice building (line 950). Verified functional in tests but tightly coupled — recommend a Pydantic response model.",
+    "walk_in_sale correctly returns invoice after popping _id; consistent Mongo ObjectId handling. Good.",
+    "AddPlayerToSessionReq: no validation that session is not already closed elsewhere — code checks status in handler; OK."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "75%"},
+  "test_credentials": "admin/admin123 (verified)",
+  "seed_data_creation": "Created a few TEST_ prefixed players and one TEST_Snack inventory item (if none had stock>5). Left behind for future retest.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file at /app/backend/tests/test_new_features.py — run with `REACT_APP_BACKEND_URL=... pytest ... -o addopts=''` (pytest.ini enables xdist which needs disabling for junit-only runs). Primary open item: preview-bill endpoint does not accept table_payer_id, causing the CloseTableModal per-player preview to lie about single-player table payment. Backend close still applies table_payer_id correctly so invoices are right — this is a preview-only display gap.",
+  "rca_of_the_issue": {
+    "bug": "Table Paid By selector shows no effect in Close & Bill preview.",
+    "reproduction": "Login admin → Open table with 2+ players → optionally add a 3rd via Player button → Close & Bill → select 'Only <name> pays for table' in table-payer-select → observe per-player-* rows unchanged.",
+    "root_cause": "GET /api/sessions/{sid}/preview-bill in /app/backend/server.py (~L876) does not accept table_payer_id; compute_session_billing therefore never sees `_table_payer_id` during preview. close_session (~L913) passes it in only at final commit.",
+    "mitigation": "Add optional table_payer_id query param to preview_bill and pass it as `_table_payer_id` when calling compute_session_billing, mirroring close_session."
+  }
+}
