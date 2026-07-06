@@ -1,0 +1,43 @@
+{
+  "summary": "Retest of three fixes on top of iteration_5. All three fixes VERIFIED: (1) preview-bill accepts table_payer_id and per-player rows update correctly (backend param + frontend refresh); (2) Close & New Frame no longer triggers 'Credit requires a linked player' for unlinked sessions thanks to pay_full=True server top-up; (3) InvoiceModal shows no span-in-option warnings (0 seen) and no missing-DialogTitle warning. Backend pytest: 4/4 pass. Frontend flow verified in browser.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Generate Bill (non-'Fill Full/New Frame' path) on unlinked multi-player session",
+        "issue": "The regular 'Generate Bill' button still uses pay_full=false. If cashier clicks 'Fill Full' then 'Generate Bill', tiny rounding drift between click and submit can produce credit > 0 on an unlinked session, triggering 400 'Credit requires a linked player'. Reproduced during cleanup step. Not in scope of the three fixes (Close & New Frame path is fixed).",
+        "affected_selectors": ["[data-testid=\"pay-fill-full\"]", "[data-testid=\"close-save-btn\"]"],
+        "priority": "LOW"
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Various dialogs",
+        "issues": ["Radix warning: 'Missing Description or aria-describedby for DialogContent' still appears (not the DialogTitle warning that was fixed). Non-blocking; a11y improvement suggestion — add DialogDescription (can be VisuallyHidden)."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter6_fixes.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [
+    "Optional: apply the same pay_full=true auto-top-up trick to the regular 'Generate Bill' button (or offer 'Fill Full' as pay_full) so unlinked multi-player sessions never hit rounding-drift 400s.",
+    "Optional a11y: add VisuallyHidden DialogDescription to CloseTableModal / OpenTableModal to silence remaining Radix warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py preview_bill now correctly forwards table_payer_id into compute_session_billing via _table_payer_id (parity with close_session). Good.",
+    "server.py close_session pay_full block (L923-927) mutates body.payments[0].amount in-place; acceptable since Pydantic model isn't reused, but consider making a local copy for clarity.",
+    "InvoiceModal VisuallyHidden DialogTitle correctly imported from @radix-ui/react-visually-hidden.",
+    "CloseTableModal option text uses template literal `${\\`Only ${pp.name} pays for table\\`}` — this eliminated the span-in-option console error (verified: 0 occurrences)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter6_fixes.py (new)"],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "admin/admin123 (verified)",
+  "seed_data_creation": "None new; leaves TEST_ITR6_* players created by pytest fixtures (harmless).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All three iteration_5 fixes confirmed. Only remaining minor items: Generate Bill (not Close & New Frame) still susceptible to rounding-drift 400 on unlinked sessions; and Radix Description-warning (separate from previously-fixed DialogTitle warning).",
+  "rca_of_the_issue": null
+}

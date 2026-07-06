@@ -205,6 +205,7 @@ class CloseReq(BaseModel):
     payments: List[PaymentSplit] = []
     end_time: Optional[str] = None
     table_payer_id: Optional[str] = None  # if set, one player pays entire table amount
+    pay_full: bool = False  # if true, top up first payment to match final_amount (avoid rounding-drift credits)
 
 
 class CreditPaymentReq(BaseModel):
@@ -873,7 +874,7 @@ async def walk_in_sale(body: WalkInSaleReq, user: dict = Depends(get_current_use
 
 
 @api.get("/sessions/{sid}/preview-bill")
-async def preview_bill(sid: str, apply_membership_to_snacks: bool = False, manual_discount: float = 0, _: dict = Depends(get_current_user)):
+async def preview_bill(sid: str, apply_membership_to_snacks: bool = False, manual_discount: float = 0, table_payer_id: Optional[str] = None, _: dict = Depends(get_current_user)):
     s = await db.sessions.find_one({"id": sid}, {"_id": 0})
     if not s:
         raise HTTPException(404, "Not found")
@@ -881,7 +882,7 @@ async def preview_bill(sid: str, apply_membership_to_snacks: bool = False, manua
     if s.get("player_id"):
         p = await db.players.find_one({"id": s["player_id"]}, {"_id": 0})
         membership = await _get_active_membership(p) if p else None
-    billing = compute_session_billing(s, membership=membership, manual_discount=manual_discount, apply_membership_to_snacks=apply_membership_to_snacks)
+    billing = compute_session_billing({**s, "_table_payer_id": table_payer_id}, membership=membership, manual_discount=manual_discount, apply_membership_to_snacks=apply_membership_to_snacks)
     return {"session": s, "membership": membership, "billing": billing}
 
 
@@ -919,6 +920,11 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
 
     total_paid = round(sum(p.amount for p in body.payments), 2)
     final = billing["final_amount"]
+    if body.pay_full and body.payments:
+        # Top up first payment so total equals final (guards rounding-drift when cashier chose 'Fill Full').
+        others = round(sum(p.amount for p in body.payments[1:]), 2)
+        body.payments[0].amount = round(max(0.0, final - others), 2)
+        total_paid = round(sum(p.amount for p in body.payments), 2)
     credit_amount = round(max(0.0, final - total_paid), 2)
 
     if credit_amount > 0 and not player:

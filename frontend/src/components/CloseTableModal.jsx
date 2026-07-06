@@ -30,7 +30,11 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   async function refresh() {
     try {
       const r = await api.get(`/sessions/${session.id}/preview-bill`, {
-        params: { manual_discount: Number(manualDiscount) || 0, apply_membership_to_snacks: applyMemToSnacks },
+        params: {
+          manual_discount: Number(manualDiscount) || 0,
+          apply_membership_to_snacks: applyMemToSnacks,
+          table_payer_id: tablePayerId && tablePayerId !== "__split" ? tablePayerId : undefined,
+        },
       });
       setPreview(r.data);
       if (!ratiosInit) {
@@ -73,15 +77,17 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   const final = preview?.billing?.final_amount || 0;
   const credit = Math.max(0, final - totalPaid);
 
-  async function submitAndReturn() {
-    if (credit > 0 && !session.player_id) { toast.error("Attach a player before creating credit"); return null; }
+  async function submitAndReturn(overridePayments, payFull) {
+    const pays = overridePayments || payments;
+    if (credit > 0 && !session.player_id && !overridePayments) { toast.error("Attach a player before creating credit"); return null; }
     setSaving(true);
     try {
       const r = await api.post(`/sessions/${session.id}/close`, {
         manual_discount: Number(manualDiscount) || 0,
         apply_membership_to_snacks: applyMemToSnacks,
-        payments,
+        payments: pays,
         table_payer_id: tablePayerId && tablePayerId !== "__split" ? tablePayerId : null,
+        pay_full: !!payFull,
       });
       return r.data;
     } catch (e) { toast.error(apiErr(e)); return null; }
@@ -154,7 +160,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
                   <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Table Paid By</div>
                   <select data-testid="table-payer-select" value={tablePayerId} onChange={(e) => setTablePayerId(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded h-9 px-2 text-sm mb-3">
                     <option value="__split">Split by ratio (default)</option>
-                    {b.per_player.map(pp => <option key={pp.player_local_id} value={pp.player_local_id}>Only {pp.name} pays for table</option>)}
+                    {b.per_player.map(pp => <option key={pp.player_local_id} value={pp.player_local_id}>{`Only ${pp.name} pays for table`}</option>)}
                   </select>
                   <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Per-Player Breakdown &amp; Ratio</div>
                   <div className="space-y-2">
@@ -203,10 +209,16 @@ export default function CloseTableModal({ session, onClose, onDone }) {
           <Button onClick={submit} disabled={saving} className="bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold" data-testid="close-save-btn">Generate Bill</Button>
           <Button
             onClick={async () => {
-              const invoice = await submitAndReturn();
+              // Auto-fill full amount to avoid rounding-drift credits.
+              const totalNow = preview?.billing?.final_amount || 0;
+              const p = [...payments];
+              const others = p.slice(1).reduce((a, x) => a + x.amount, 0);
+              p[0] = { ...p[0], amount: Math.max(0, totalNow - others) };
+              setPayments(p);
+              const invoice = await submitAndReturn(p, true);
               if (!invoice) return;
               try {
-                const players = (preview?.session?.players || []).map(p => ({ name: p.name, mobile: p.mobile || "", player_id: p.player_id || null, ratio: 1 }));
+                const players = (preview?.session?.players || []).map(pl => ({ name: pl.name, mobile: pl.mobile || "", player_id: pl.player_id || null, ratio: 1 }));
                 await api.post("/sessions/open", {
                   table_id: session.current_table_id, player_name: players[0]?.name || session.player_name,
                   mobile: players[0]?.mobile || "", player_id: players[0]?.player_id || null,

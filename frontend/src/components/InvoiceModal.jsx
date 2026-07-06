@@ -1,4 +1,5 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Button } from "@/components/ui/button";
 import { fmt, fmtDate, fmtDuration } from "@/utils";
 import { useEffect, useState } from "react";
@@ -14,6 +15,7 @@ export default function InvoiceModal({ invoice, onClose }) {
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-white text-black max-w-md p-0 gap-0 print:shadow-none print:max-w-none print:m-0">
+        <VisuallyHidden><DialogTitle>Invoice {invoice.invoice_number}</DialogTitle></VisuallyHidden>
         <div className="flex items-center justify-between p-3 border-b bg-zinc-100 print:hidden">
           <div className="font-semibold text-sm">Invoice Preview</div>
           <div className="flex gap-2">
