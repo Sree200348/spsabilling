@@ -47,4 +47,13 @@ body {
 @media print {
     body { background: white !important; color: black !important; }
     header, nav, aside, [data-print-hide] { display: none !important; }
+    /* Reports print polish */
+    .border-zinc-800, .border-zinc-700 { border-color: #d4d4d8 !important; }
+    .text-zinc-400, .text-zinc-500 { color: #52525b !important; }
+    .bg-zinc-900, .bg-zinc-950, .bg-zinc-800 { background: transparent !important; }
+    .text-\[\#10B981\], .text-\[\#F59E0B\] { color: #000 !important; }
+    button { display: none !important; }
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; page-break-after: auto; }
+    thead { display: table-header-group; }
 }

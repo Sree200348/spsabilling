@@ -95,7 +95,9 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   }
 
   async function submit() {
-    const inv = await submitAndReturn();
+    // If cashier intended to pay in full (within rounding tolerance), let server absorb tiny drift.
+    const nearFull = Math.abs(totalPaid - final) < 1;
+    const inv = await submitAndReturn(undefined, nearFull);
     if (inv) { toast.success("Bill generated"); onDone(inv); }
   }
 

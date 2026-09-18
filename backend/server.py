@@ -927,6 +927,12 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
         total_paid = round(sum(p.amount for p in body.payments), 2)
     credit_amount = round(max(0.0, final - total_paid), 2)
 
+    if credit_amount > 0 and not player and body.payments and 0 < credit_amount <= 1.0:
+        # Unlinked session: absorb rounding drift (≤ ₹1) into the first payment instead of blocking the cashier.
+        body.payments[0].amount = round(body.payments[0].amount + credit_amount, 2)
+        total_paid = round(sum(p.amount for p in body.payments), 2)
+        credit_amount = 0.0
+
     if credit_amount > 0 and not player:
         raise HTTPException(400, "Credit requires a linked player")
 

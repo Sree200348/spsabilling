@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Download, Printer } from "lucide-react";
+import { Download, Printer, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
 
 export default function Reports() {
   const [data, setData] = useState(null);
@@ -58,6 +59,62 @@ export default function Reports() {
     URL.revokeObjectURL(url);
   }
 
+  function exportExcel() {
+    if (!data) return;
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Summary
+    const summary = [
+      ["Metric", "Value"],
+      ["Grand Total Revenue", data.grand_total_revenue],
+      ["Table Revenue", data.total_table_revenue],
+      ["Snacks Revenue", data.total_snacks_revenue],
+      ["Sessions", data.num_sessions],
+      ["Discounts", data.total_discount],
+      ["Credit Generated", data.total_credit_generated],
+      ["Credit Received", data.total_credit_received],
+      ["Most Used Table", data.most_used_table?.table_name || ""],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Summary");
+
+    // Sheet 2: Invoices
+    const invHeader = ["Invoice", "Date", "Player", "Mobile", "Tables", "Table Amt", "Snacks", "Discount", "Final", "Paid", "Credit", "Status"];
+    const invRows = [invHeader, ...data.invoices.map(i => [
+      i.invoice_number,
+      new Date(i.created_at).toLocaleString(),
+      i.player_name || "",
+      i.player_mobile || "",
+      i.entries.map(e => e.table_name).join(" + "),
+      i.table_amount,
+      i.snacks_total,
+      Number((i.membership_discount + i.snacks_discount + i.manual_discount).toFixed(2)),
+      i.final_amount,
+      i.amount_paid,
+      i.credit_amount,
+      i.payment_status,
+    ])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(invRows), "Invoices");
+
+    // Sheet 3: Payment Methods
+    const pmRows = [["Method", "Amount"], ...Object.entries(data.by_payment_method).map(([m, a]) => [m.toUpperCase(), a])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pmRows), "Payment Methods");
+
+    // Sheet 4: Top Players
+    const tpRows = [["Player", "Spent"], ...data.top_players.map(p => [p.player_name, p.spent])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tpRows), "Top Players");
+
+    // Sheet 5: Table Usage
+    const tuRows = [["Table", "Sessions", "Duration (s)", "Revenue"], ...data.table_usage.map(t => [t.table_name, t.sessions, t.seconds, t.revenue])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tuRows), "Table Usage");
+
+    // Sheet 6: Snack Sales
+    const snRows = [["Snack", "Qty", "Revenue"], ...data.snack_sales.map(s => [s.name, s.qty, s.revenue])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(snRows), "Snack Sales");
+
+    XLSX.writeFile(wb, `report_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("Excel exported");
+  }
+
   return (
     <div>
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
@@ -70,6 +127,7 @@ export default function Reports() {
           <Button variant="outline" onClick={() => preset("week")} className="border-zinc-700" data-testid="report-week">7d</Button>
           <Button variant="outline" onClick={() => preset("month")} className="border-zinc-700" data-testid="report-month">Month</Button>
           <Button onClick={exportCSV} className="bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold" data-testid="report-csv"><Download size={14} className="mr-1"/> CSV</Button>
+          <Button onClick={exportExcel} className="bg-[#0F766E] hover:bg-[#115E59] text-white font-bold" data-testid="report-xlsx"><FileSpreadsheet size={14} className="mr-1"/> Excel</Button>
           <Button onClick={() => window.print()} variant="outline" className="border-zinc-700" data-testid="report-print"><Printer size={14} className="mr-1"/> Print</Button>
         </div>
       </div>
