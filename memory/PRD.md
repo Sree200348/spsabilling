@@ -50,6 +50,7 @@ Complete billing/management website for a snooker parlour with: dashboard/live t
 - [x] Close & New Frame with `pay_full` auto top-up
 - [x] Reports export: CSV, Excel (.xlsx, 6 sheets), Print (print CSS) — verified iteration_7
 - [x] Data Backup/Restore admin-gated, lossless round-trip — verified iteration_7
+- [x] Add Player modal (running frame): "New Player" tab creates a brand-new player (name/mobile, optional save to players list) and joins them mid-session (Jun 2026, self-tested)
 - [x] Rounding-drift fix: unlinked sessions absorb ≤₹1 drift into first payment instead of 400 — verified iteration_7
 
 ## Backlog (P1/P2)
