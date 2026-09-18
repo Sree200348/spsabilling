@@ -45,7 +45,17 @@ Complete billing/management website for a snooker parlour with: dashboard/live t
 - [x] Per-player bill breakdown in Close modal and Invoice (share%, table share, snacks share, subtotal)
 - [x] Audit log (login, session open/pause/resume/switch/close, credit payment) with admin-only viewer under Admin > Audit Log
 
+## Phase 3 (Jun 2026)
+- [x] Walk-in snacks (no table), mid-session prorated joining, single-payer table override (`table_payer_id`)
+- [x] Close & New Frame with `pay_full` auto top-up
+- [x] Reports export: CSV, Excel (.xlsx, 6 sheets), Print (print CSS) — verified iteration_7
+- [x] Data Backup/Restore admin-gated, lossless round-trip — verified iteration_7
+- [x] Rounding-drift fix: unlinked sessions absorb ≤₹1 drift into first payment instead of 400 — verified iteration_7
+
 ## Backlog (P1/P2)
+- P2: Invoice save-as-PDF option
+- P2: Low-stock alerts/badge on dashboard
+- Tech debt: move JWT to httpOnly cookie; whitelist collections + validate payload in /api/data/restore
 - P1: SMS invoice send (Twilio) with per-player split forwarding
 - P1: Happy Hour auto-rules (time-based table rate discounts)
 - P2: Weekly/monthly PDF reports
