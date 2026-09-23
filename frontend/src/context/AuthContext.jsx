@@ -24,14 +24,21 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  const register = useCallback(async (form) => {
+    const { data } = await api.post("/auth/register", form);
+    localStorage.setItem("sp_token", data.token);
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem("sp_token");
     setUser(false);
   }, []);
 
   const value = useMemo(
-    () => ({ user, ready, login, logout, isAdmin: user?.role === "admin" }),
-    [user, ready, login, logout]
+    () => ({ user, ready, login, register, logout, isAdmin: user?.role === "admin" }),
+    [user, ready, login, register, logout]
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

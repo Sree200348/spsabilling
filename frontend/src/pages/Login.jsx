@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +61,10 @@ export default function Login() {
           </div>
           <Button data-testid="login-submit-btn" type="submit" disabled={loading} className="w-full bg-[#10B981] text-[#0A0A0A] hover:bg-[#059669] font-bold h-11">
             {loading ? "Signing in…" : "Sign In"}
+          </Button>
+          <div className="flex items-center gap-3 text-xs text-zinc-500"><div className="flex-1 h-px bg-zinc-800" />New snooker club?<div className="flex-1 h-px bg-zinc-800" /></div>
+          <Button asChild variant="outline" className="w-full border-[#10B981]/50 text-[#10B981] hover:bg-[#10B981]/10 hover:text-[#10B981] h-11 font-bold">
+            <Link to="/register" data-testid="login-register-btn">Register Your Club</Link>
           </Button>
         </form>
       </div>

@@ -20,7 +20,67 @@ from pydantic import BaseModel, Field
 # ---------- App / DB Setup ----------
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+raw_db = client[os.environ['DB_NAME']]
+
+# ---------- Multi-tenant scoping (club_id injected into every query) ----------
+from contextvars import ContextVar
+current_club: ContextVar[str] = ContextVar("current_club", default="default")
+
+
+class _ScopedCollection:
+    def __init__(self, coll):
+        self._c = coll
+
+    def _f(self, flt: Optional[dict] = None) -> dict:
+        return {**(flt or {}), "club_id": current_club.get()}
+
+    def _tag(self, doc: dict) -> dict:
+        doc["club_id"] = current_club.get()
+        return doc
+
+    def find(self, flt=None, *a, **kw):
+        return self._c.find(self._f(flt), *a, **kw)
+
+    async def find_one(self, flt=None, *a, **kw):
+        return await self._c.find_one(self._f(flt), *a, **kw)
+
+    async def insert_one(self, doc, *a, **kw):
+        return await self._c.insert_one(self._tag(doc), *a, **kw)
+
+    async def insert_many(self, docs, *a, **kw):
+        return await self._c.insert_many([self._tag(d) for d in docs], *a, **kw)
+
+    async def update_one(self, flt, update, *a, **kw):
+        return await self._c.update_one(self._f(flt), update, *a, **kw)
+
+    async def update_many(self, flt, update, *a, **kw):
+        return await self._c.update_many(self._f(flt), update, *a, **kw)
+
+    async def delete_one(self, flt, *a, **kw):
+        return await self._c.delete_one(self._f(flt), *a, **kw)
+
+    async def delete_many(self, flt, *a, **kw):
+        return await self._c.delete_many(self._f(flt), *a, **kw)
+
+    async def count_documents(self, flt=None, *a, **kw):
+        return await self._c.count_documents(self._f(flt), *a, **kw)
+
+    async def find_one_and_update(self, flt, update, *a, **kw):
+        return await self._c.find_one_and_update(self._f(flt), update, *a, **kw)
+
+    async def create_index(self, *a, **kw):
+        return await self._c.create_index(*a, **kw)
+
+
+class _ScopedDB:
+    def __getattr__(self, name):
+        return _ScopedCollection(getattr(raw_db, name))
+
+    def __getitem__(self, name):
+        return _ScopedCollection(raw_db[name])
+
+
+db = _ScopedDB()
 
 app = FastAPI(title="South Point Snooker Academy")
 api = APIRouter(prefix="/api")
@@ -78,9 +138,10 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(401, "Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(401, "Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    user = await raw_db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(401, "User not found")
+    current_club.set(user.get("club_id") or "default")
     return user
 
 
@@ -110,6 +171,20 @@ async def audit(user: Optional[dict], action: str, entity_type: str = "", entity
 class LoginReq(BaseModel):
     username: str
     password: str
+
+
+class RegisterReq(BaseModel):
+    club_name: str
+    username: str
+    password: str
+    mobile: Optional[str] = ""
+    location: Optional[str] = ""
+
+
+class CollectReq(BaseModel):
+    amount: float
+    method: str = "cash"
+    remarks: Optional[str] = ""
 
 
 class TableIn(BaseModel):
@@ -244,7 +319,7 @@ def _entry_billable_seconds(entry: dict, ref_time: Optional[datetime] = None) ->
         p_end_str = p.get("end")
         p_end = datetime.fromisoformat(p_end_str) if p_end_str else (ref_time or now_utc())
         pause_secs += (p_end - p_start).total_seconds()
-    return max(0, int(total - pause_secs))
+    return max(0, int(total - pause_secs)) // 60 * 60  # minute-wise billing (completed minutes)
 
 
 def compute_session_billing(session: dict, membership: Optional[dict] = None, manual_discount: float = 0,
@@ -263,7 +338,7 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
         billable_secs = _entry_billable_seconds(e, ref_time=ref_time)
         paused_secs = sess_secs - billable_secs
         rate = float(e.get("hourly_rate", 0))
-        amount = round(rate / 3600 * billable_secs, 2)
+        amount = round(rate / 60 * (billable_secs // 60), 2)
         entries_billing.append({
             "table_id": e["table_id"],
             "table_name": e["table_name"],
@@ -322,7 +397,7 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
         weights = []
         for pl in players_list:
             pres = _presence_secs(pl)
-            w = pres * max(0.0, float(pl.get("ratio", 1)))
+            w = max(0.0, float(pl.get("ratio", 1)))  # split by ratio of total table bill (presence not weighted)
             weights.append((pl, pres, w))
         total_w = sum(w for _, _, w in weights) or 1.0
         for pl, pres, w in weights:
@@ -367,20 +442,43 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
 # ---------- Auth Endpoints ----------
 @api.post("/auth/login")
 async def login(body: LoginReq):
-    user = await db.users.find_one({"username": body.username.lower()})
+    user = await raw_db.users.find_one({"username": body.username.lower()})
     if not user or not verify_pw(body.password, user["password_hash"]):
         raise HTTPException(401, "Invalid credentials")
+    current_club.set(user.get("club_id") or "default")
     token = create_token(user["id"], user["username"], user["role"])
     await audit({"id": user["id"], "username": user["username"], "role": user["role"]}, "login", "user", user["id"])
+    club = await raw_db.clubs.find_one({"id": user.get("club_id", "default")}, {"_id": 0})
     return {
         "token": token,
-        "user": {"id": user["id"], "username": user["username"], "role": user["role"], "name": user.get("name", "")},
+        "user": {"id": user["id"], "username": user["username"], "role": user["role"], "name": user.get("name", ""), "club_id": user.get("club_id", "default"), "club_name": (club or {}).get("name", "")},
     }
+
+
+@api.post("/auth/register")
+async def register(body: RegisterReq):
+    uname = body.username.strip().lower()
+    if len(uname) < 3 or len(body.password) < 6:
+        raise HTTPException(400, "Username min 3 chars, password min 6 chars")
+    if not body.club_name.strip():
+        raise HTTPException(400, "Club name required")
+    if await raw_db.users.find_one({"username": uname}):
+        raise HTTPException(400, "Username already taken")
+    club = {"id": new_id(), "name": body.club_name.strip(), "mobile": body.mobile or "", "location": body.location or "", "created_at": iso(now_utc())}
+    await raw_db.clubs.insert_one(club)
+    current_club.set(club["id"])
+    user = {"id": new_id(), "username": uname, "password_hash": hash_pw(body.password), "role": "admin", "name": "Owner", "mobile": body.mobile or "", "created_at": iso(now_utc())}
+    await db.users.insert_one(user)
+    await seed_club_defaults(club["name"], club.get("location", ""), club.get("mobile", ""))
+    await audit({"id": user["id"], "username": uname, "role": "admin"}, "club_register", "club", club["id"], {"club": club["name"]})
+    token = create_token(user["id"], uname, "admin")
+    return {"token": token, "user": {"id": user["id"], "username": uname, "role": "admin", "name": "Owner", "club_id": club["id"], "club_name": club["name"]}}
 
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    return user
+    club = await raw_db.clubs.find_one({"id": user.get("club_id", "default")}, {"_id": 0})
+    return {**user, "club_name": (club or {}).get("name", "")}
 
 
 # ---------- Users (admin) ----------
@@ -394,7 +492,7 @@ async def list_users(_: dict = Depends(require_admin)):
 async def create_user(body: UserIn, _: dict = Depends(require_admin)):
     if not body.password:
         raise HTTPException(400, "Password required")
-    if await db.users.find_one({"username": body.username.lower()}):
+    if await raw_db.users.find_one({"username": body.username.lower()}):
         raise HTTPException(400, "Username exists")
     doc = {
         "id": new_id(),
@@ -839,8 +937,6 @@ async def walk_in_sale(body: WalkInSaleReq, user: dict = Depends(get_current_use
     total = round(total, 2)
     paid = round(sum(p.amount for p in body.payments), 2)
     credit_amount = round(max(0.0, total - paid), 2)
-    if credit_amount > 0 and not body.player_id:
-        raise HTTPException(400, "Credit requires a linked player")
     invoice_number = await _next_invoice_number()
     if paid == 0:
         status = "credit"
@@ -926,15 +1022,6 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
         body.payments[0].amount = round(max(0.0, final - others), 2)
         total_paid = round(sum(p.amount for p in body.payments), 2)
     credit_amount = round(max(0.0, final - total_paid), 2)
-
-    if credit_amount > 0 and not player and body.payments and 0 < credit_amount <= 1.0:
-        # Unlinked session: absorb rounding drift (≤ ₹1) into the first payment instead of blocking the cashier.
-        body.payments[0].amount = round(body.payments[0].amount + credit_amount, 2)
-        total_paid = round(sum(p.amount for p in body.payments), 2)
-        credit_amount = 0.0
-
-    if credit_amount > 0 and not player:
-        raise HTTPException(400, "Credit requires a linked player")
 
     if total_paid == 0:
         payment_status = "credit" if credit_amount > 0 else "paid"
@@ -1025,6 +1112,48 @@ async def list_invoices(
     if payment_method:
         invoices = [i for i in invoices if any(p["method"] == payment_method for p in i.get("payments", []))]
     return invoices
+
+
+@api.get("/invoices/unpaid")
+async def unpaid_invoices(_: dict = Depends(get_current_user)):
+    invoices = await db.invoices.find({"credit_amount": {"$gt": 0}}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    by_player: Dict[str, Dict[str, Any]] = {}
+    for i in invoices:
+        key = i.get("player_id") or f"walkin:{(i.get('player_name') or 'Walk-in').strip().lower()}"
+        row = by_player.setdefault(key, {"key": key, "player_id": i.get("player_id"), "player_name": i.get("player_name") or "Walk-in",
+                                         "player_mobile": i.get("player_mobile") or "", "invoices": 0, "billed": 0.0, "paid": 0.0, "due": 0.0})
+        row["invoices"] += 1
+        row["billed"] = round(row["billed"] + i["final_amount"], 2)
+        row["paid"] = round(row["paid"] + i["amount_paid"], 2)
+        row["due"] = round(row["due"] + i["credit_amount"], 2)
+    return {"total_due": round(sum(i["credit_amount"] for i in invoices), 2), "count": len(invoices),
+            "invoices": invoices, "by_player": sorted(by_player.values(), key=lambda x: -x["due"])}
+
+
+@api.post("/invoices/{iid}/collect")
+async def collect_invoice(iid: str, body: CollectReq, user: dict = Depends(get_current_user)):
+    inv = await db.invoices.find_one({"id": iid}, {"_id": 0})
+    if not inv:
+        raise HTTPException(404, "Invoice not found")
+    due = round(float(inv.get("credit_amount", 0)), 2)
+    amt = round(float(body.amount), 2)
+    if due <= 0:
+        raise HTTPException(400, "Invoice already settled")
+    if amt <= 0 or amt > due + 0.01:
+        raise HTTPException(400, f"Amount must be between 0 and {due}")
+    amt = min(amt, due)
+    new_credit = round(due - amt, 2)
+    new_paid = round(inv["amount_paid"] + amt, 2)
+    status = "paid" if new_credit <= 0 else "partial"
+    payments = inv.get("payments", []) + [{"method": body.method, "amount": amt, "collected_at": iso(now_utc()), "remarks": body.remarks or ""}]
+    await db.invoices.update_one({"id": iid}, {"$set": {"payments": payments, "amount_paid": new_paid, "credit_amount": new_credit, "payment_status": status}})
+    if inv.get("player_id"):
+        await db.players.update_one({"id": inv["player_id"]}, {"$inc": {"credit_balance": -amt}})
+    pay_doc = {"id": new_id(), "player_id": inv.get("player_id"), "player_name": inv.get("player_name"), "amount": amt, "method": body.method,
+               "remarks": body.remarks or "", "invoice_id": iid, "invoice_number": inv["invoice_number"], "created_at": iso(now_utc()), "created_by": user["username"]}
+    await db.credit_payments.insert_one(pay_doc)
+    await audit(user, "invoice_collect", "invoice", iid, {"amount": amt, "method": body.method, "status": status})
+    return await db.invoices.find_one({"id": iid}, {"_id": 0})
 
 
 @api.get("/invoices/{iid}")
@@ -1195,11 +1324,12 @@ async def reports(
 async def get_settings(_: dict = Depends(get_current_user)):
     s = await db.settings.find_one({"id": "main"}, {"_id": 0})
     if not s:
+        club = await raw_db.clubs.find_one({"id": current_club.get()}, {"_id": 0})
         s = {
             "id": "main",
-            "business_name": "South Point Snooker Academy",
-            "address": "",
-            "phone": "",
+            "business_name": (club or {}).get("name") or "South Point Snooker Academy",
+            "address": (club or {}).get("location", ""),
+            "phone": (club or {}).get("mobile", ""),
             "invoice_footer": "Thank you for playing!",
             "currency": "₹",
             "tax_percent": 0,
@@ -1245,8 +1375,38 @@ async def clear_data(_: dict = Depends(require_admin)):
 
 
 # ---------- Seed ----------
+async def seed_club_defaults(business_name: str, address: str = "", phone: str = ""):
+    """Seed tables, memberships, inventory and settings for the current club (idempotent)."""
+    if await db.tables.count_documents({}) == 0:
+        for i, (n, r) in enumerate([("Table 1", 220), ("Table 2", 320), ("Table 3", 320), ("Table 4", 320)]):
+            await db.tables.insert_one({"id": new_id(), "name": n, "hourly_rate": r, "order": i})
+    if await db.memberships.count_documents({}) == 0:
+        for mem in [
+            {"name": "Regular Member", "discount_percent": 10, "validity_days": 365, "active": True, "apply_to_snacks": False},
+            {"name": "Premium Member", "discount_percent": 20, "validity_days": 365, "active": True, "apply_to_snacks": False},
+        ]:
+            await db.memberships.insert_one({"id": new_id(), **mem})
+    if await db.inventory.count_documents({}) == 0:
+        for item in [
+            {"name": "Tea", "selling_price": 15, "cost_price": 8, "stock": 100, "low_stock_alert": 10},
+            {"name": "Coffee", "selling_price": 15, "cost_price": 8, "stock": 100, "low_stock_alert": 10},
+            {"name": "Chips", "selling_price": 20, "cost_price": 12, "stock": 50, "low_stock_alert": 5},
+            {"name": "Juice", "selling_price": 25, "cost_price": 15, "stock": 40, "low_stock_alert": 5},
+        ]:
+            await db.inventory.insert_one({"id": new_id(), **item})
+    if not await db.settings.find_one({"id": "main"}):
+        await db.settings.insert_one({"id": "main", "business_name": business_name, "address": address, "phone": phone,
+                                      "invoice_footer": "Thank you for playing!", "currency": "₹", "tax_percent": 0})
+
+
 async def seed_all():
-    # Users
+    current_club.set("default")
+    if not await raw_db.clubs.find_one({"id": "default"}):
+        await raw_db.clubs.insert_one({"id": "default", "name": "South Point Snooker Academy", "mobile": "", "location": "", "created_at": iso(now_utc())})
+    # Migrate legacy docs (pre multi-tenant) into the default club
+    for c in ["users", "tables", "memberships", "inventory", "players", "sessions", "invoices", "credit_payments", "settings", "counters", "audit_logs"]:
+        await raw_db[c].update_many({"club_id": {"$exists": False}}, {"$set": {"club_id": "default"}})
+
     admin_user = os.environ.get("ADMIN_USERNAME", "admin").lower()
     admin_pw = os.environ.get("ADMIN_PASSWORD", "admin123")
     cashier_user = os.environ.get("CASHIER_USERNAME", "cashier").lower()
@@ -1265,54 +1425,17 @@ async def seed_all():
         elif not verify_pw(pw, existing["password_hash"]):
             await db.users.update_one({"username": uname}, {"$set": {"password_hash": hash_pw(pw), "role": role}})
 
-    # Tables
-    if await db.tables.count_documents({}) == 0:
-        defaults = [
-            ("Table 1", 220),
-            ("Table 2", 320),
-            ("Table 3", 320),
-            ("Table 4", 320),
-        ]
-        for i, (n, r) in enumerate(defaults):
-            await db.tables.insert_one({"id": new_id(), "name": n, "hourly_rate": r, "order": i})
-
-    # Memberships
-    if await db.memberships.count_documents({}) == 0:
-        for mem in [
-            {"name": "Regular Member", "discount_percent": 10, "validity_days": 365, "active": True, "apply_to_snacks": False},
-            {"name": "Premium Member", "discount_percent": 20, "validity_days": 365, "active": True, "apply_to_snacks": False},
-        ]:
-            await db.memberships.insert_one({"id": new_id(), **mem})
-
-    # Inventory
-    if await db.inventory.count_documents({}) == 0:
-        for item in [
-            {"name": "Tea", "selling_price": 15, "cost_price": 8, "stock": 100, "low_stock_alert": 10},
-            {"name": "Coffee", "selling_price": 15, "cost_price": 8, "stock": 100, "low_stock_alert": 10},
-            {"name": "Chips", "selling_price": 20, "cost_price": 12, "stock": 50, "low_stock_alert": 5},
-            {"name": "Juice", "selling_price": 25, "cost_price": 15, "stock": 40, "low_stock_alert": 5},
-        ]:
-            await db.inventory.insert_one({"id": new_id(), **item})
-
-    # Settings
-    if not await db.settings.find_one({"id": "main"}):
-        await db.settings.insert_one({
-            "id": "main",
-            "business_name": "South Point Snooker Academy",
-            "address": "",
-            "phone": "",
-            "invoice_footer": "Thank you for playing!",
-            "currency": "₹",
-            "tax_percent": 0,
-        })
+    await seed_club_defaults("South Point Snooker Academy")
 
 
 @app.on_event("startup")
 async def on_startup():
-    await db.users.create_index("username", unique=True)
-    await db.tables.create_index("id", unique=True)
-    await db.players.create_index("id", unique=True)
-    await db.invoices.create_index("created_at")
+    await raw_db.users.create_index("username", unique=True)
+    await raw_db.tables.create_index("id", unique=True)
+    await raw_db.players.create_index("id", unique=True)
+    await raw_db.invoices.create_index("created_at")
+    for c in ["tables", "players", "sessions", "invoices", "credit_payments", "inventory", "memberships", "users"]:
+        await raw_db[c].create_index("club_id")
     await seed_all()
     logger.info("Startup seeding complete")
 

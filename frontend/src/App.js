@@ -11,6 +11,8 @@ import Memberships from "@/pages/Memberships";
 import Credit from "@/pages/Credit";
 import Reports from "@/pages/Reports";
 import Admin from "@/pages/Admin";
+import Register from "@/pages/Register";
+import Payments from "@/pages/Payments";
 import "@/App.css";
 
 function App() {
@@ -19,7 +21,9 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/" element={<Protected><Layout><Dashboard /></Layout></Protected>} />
+          <Route path="/payments" element={<Protected><Layout><Payments /></Layout></Protected>} />
           <Route path="/players" element={<Protected><Layout><Players /></Layout></Protected>} />
           <Route path="/inventory" element={<Protected><Layout><Inventory /></Layout></Protected>} />
           <Route path="/memberships" element={<Protected><Layout><Memberships /></Layout></Protected>} />

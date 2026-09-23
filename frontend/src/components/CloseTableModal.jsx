@@ -61,25 +61,12 @@ export default function CloseTableModal({ session, onClose, onDone }) {
     p[0] = { ...p[0], amount: Math.max(0, total - others) };
     setPayments(p);
   }
-  function splitEqual() {
-    const pp = preview?.billing?.per_player || [];
-    if (pp.length > 1) {
-      setPayments(pp.map(x => ({ _key: crypto.randomUUID(), method: "cash", amount: Math.round(x.subtotal * 100) / 100 })));
-      return;
-    }
-    const n = Number(session.num_players || 1);
-    const total = preview?.billing?.final_amount || 0;
-    const each = Math.round((total / n) * 100) / 100;
-    setPayments(Array.from({ length: n }, (_, i) => ({ _key: crypto.randomUUID(), method: "cash", amount: i === n - 1 ? total - each * (n - 1) : each })));
-  }
-
   const totalPaid = payments.reduce((a, p) => a + Number(p.amount || 0), 0);
   const final = preview?.billing?.final_amount || 0;
   const credit = Math.max(0, final - totalPaid);
 
   async function submitAndReturn(overridePayments, payFull) {
     const pays = overridePayments || payments;
-    if (credit > 0 && !session.player_id && !overridePayments) { toast.error("Attach a player before creating credit"); return null; }
     setSaving(true);
     try {
       const r = await api.post(`/sessions/${session.id}/close`, {
@@ -143,7 +130,6 @@ export default function CloseTableModal({ session, onClose, onDone }) {
               <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Payments</div>
               <div className="flex gap-2 mb-3">
                 <Button size="sm" onClick={fillFull} className="bg-zinc-800 hover:bg-zinc-700" data-testid="pay-fill-full">Fill Full</Button>
-                <Button size="sm" onClick={splitEqual} className="bg-zinc-800 hover:bg-zinc-700" data-testid="pay-split-equal">Split Equal</Button>
                 <Button size="sm" onClick={addPay} className="bg-zinc-800 hover:bg-zinc-700" data-testid="pay-add">+ Method</Button>
               </div>
               <div className="space-y-2">
@@ -161,7 +147,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
                 <div className="mt-4 border-t border-zinc-800 pt-3">
                   <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Table Paid By</div>
                   <select data-testid="table-payer-select" value={tablePayerId} onChange={(e) => setTablePayerId(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded h-9 px-2 text-sm mb-3">
-                    <option value="__split">Split by ratio (default)</option>
+                    <option value="__split">Split total table bill by ratio (default)</option>
                     {b.per_player.map(pp => <option key={pp.player_local_id} value={pp.player_local_id}>{`Only ${pp.name} pays for table`}</option>)}
                   </select>
                   <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Per-Player Breakdown &amp; Ratio</div>
@@ -200,8 +186,8 @@ export default function CloseTableModal({ session, onClose, onDone }) {
                 <Row k="Total Paid" v={fmt(totalPaid)} />
                 <Row k="Credit / Balance" v={fmt(credit)} accent={credit > 0} />
               </div>
-              {credit > 0 && !session.player_id && (
-                <div className="mt-2 text-xs text-red-400">Attach a player from the dashboard before saving credit.</div>
+              {credit > 0 && (
+                <div className="mt-2 text-xs text-[#F59E0B]" data-testid="close-unpaid-note">{fmt(credit)} will stay unpaid — collect it later from the Payments page{session.player_id ? "" : " (unlinked bill)"}.</div>
               )}
             </div>
           </div>

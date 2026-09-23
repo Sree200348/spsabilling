@@ -1,10 +1,11 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { LayoutDashboard, Users, Package, Award, CreditCard, BarChart3, Settings, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, Package, Award, CreditCard, BarChart3, Settings, LogOut, Menu, X, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
+  { to: "/payments", label: "Payments", icon: Wallet, testid: "nav-payments" },
   { to: "/players", label: "Players", icon: Users, testid: "nav-players" },
   { to: "/inventory", label: "Inventory", icon: Package, testid: "nav-inventory" },
   { to: "/memberships", label: "Memberships", icon: Award, testid: "nav-memberships" },
@@ -27,9 +28,9 @@ export default function Layout({ children }) {
             <button data-testid="menu-toggle-btn" className="md:hidden p-2 rounded hover:bg-zinc-900" onClick={() => setOpen(!open)}>
               {open ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="w-9 h-9 rounded-md bg-[#10B981] grid place-items-center font-black text-[#0A0A0A]">SP</div>
+            <div className="w-9 h-9 rounded-md bg-[#10B981] grid place-items-center font-black text-[#0A0A0A]">{(user?.club_name || "SP").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase()}</div>
             <div>
-              <div className="font-black tracking-tight leading-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>SOUTH POINT SNOOKER ACADEMY</div>
+              <div className="font-black tracking-tight leading-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif" }} data-testid="club-name">{(user?.club_name || "SOUTH POINT SNOOKER ACADEMY").toUpperCase()}</div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Billing Console</div>
             </div>
           </div>

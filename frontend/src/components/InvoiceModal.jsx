@@ -80,8 +80,8 @@ export default function InvoiceModal({ invoice, onClose }) {
           {invoice.payments?.length > 0 && (
             <div className="border-t border-dashed border-black pt-2 mt-2 text-xs">
               <div className="font-bold uppercase mb-1">Payments</div>
-              {invoice.payments.map((p) => (
-                <div key={`${p.method}-${p.amount}`} className="flex justify-between"><span>{p.method.toUpperCase()}</span><span>{fmt(p.amount)}</span></div>
+              {invoice.payments.map((p, idx) => (
+                <div key={idx} className="flex justify-between"><span>{p.method.toUpperCase()}{p.collected_at ? ` · ${fmtDate(p.collected_at)}` : ""}</span><span>{fmt(p.amount)}</span></div>
               ))}
             </div>
           )}
