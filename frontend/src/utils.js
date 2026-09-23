@@ -44,11 +44,10 @@ export function computeLive(session, now) {
       pause += Math.max(0, (pe - ps) / 1000);
     }
     const bill = Math.max(0, sess - pause);
-    const billMins = Math.floor(bill / 60); // minute-wise billing (completed minutes), matches backend
     totalSession += sess;
     totalPause += pause;
     totalBillable += bill;
-    tableAmount += (Number(e.hourly_rate) / 60) * billMins;
+    tableAmount += (Number(e.hourly_rate) / 3600) * bill;
   }
   const snacksTotal = (session.snacks || []).reduce((a, s) => a + s.total, 0);
   return {

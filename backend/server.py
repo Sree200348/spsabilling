@@ -319,7 +319,7 @@ def _entry_billable_seconds(entry: dict, ref_time: Optional[datetime] = None) ->
         p_end_str = p.get("end")
         p_end = datetime.fromisoformat(p_end_str) if p_end_str else (ref_time or now_utc())
         pause_secs += (p_end - p_start).total_seconds()
-    return max(0, int(total - pause_secs)) // 60 * 60  # minute-wise billing (completed minutes)
+    return max(0, int(total - pause_secs))
 
 
 def compute_session_billing(session: dict, membership: Optional[dict] = None, manual_discount: float = 0,
@@ -338,7 +338,7 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
         billable_secs = _entry_billable_seconds(e, ref_time=ref_time)
         paused_secs = sess_secs - billable_secs
         rate = float(e.get("hourly_rate", 0))
-        amount = round(rate / 60 * (billable_secs // 60), 2)
+        amount = round(rate / 3600 * billable_secs, 2)
         entries_billing.append({
             "table_id": e["table_id"],
             "table_name": e["table_name"],
