@@ -9,7 +9,7 @@ import { api, apiErr } from "@/api";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 
-const EMPTY_P = () => ({ _key: crypto.randomUUID(), name: "", mobile: "", player_id: "", ratio: 1 });
+const EMPTY_P = () => ({ _key: crypto.randomUUID(), name: "", mobile: "", player_id: "", ratio: 1, save: true });
 
 export default function OpenTableModal({ table, onClose, onDone }) {
   const [players, setPlayers] = useState([EMPTY_P()]);
@@ -40,7 +40,7 @@ export default function OpenTableModal({ table, onClose, onDone }) {
         player_id: players[0].player_id || null,
         num_players: players.length,
         remarks,
-        players: players.map(p => ({ name: p.name, mobile: p.mobile, player_id: p.player_id || null, ratio: Number(p.ratio) || 1 })),
+        players: players.map(p => ({ name: p.name, mobile: p.mobile, player_id: p.player_id || null, ratio: Number(p.ratio) || 1, save: !p.player_id && !!p.save })),
       };
       await api.post("/sessions/open", body);
       toast.success(`${table.name} opened`);
@@ -75,6 +75,12 @@ export default function OpenTableModal({ table, onClose, onDone }) {
                 <Input data-testid={`open-name-input-${i}`} placeholder="Name *" value={p.name} onChange={(e) => updateP(i, { name: e.target.value })} className="bg-zinc-900 border-zinc-800 h-9" />
                 <Input data-testid={`open-mobile-input-${i}`} placeholder="Mobile" value={p.mobile} onChange={(e) => updateP(i, { mobile: e.target.value })} className="bg-zinc-900 border-zinc-800 h-9" />
               </div>
+              {!p.player_id && (
+                <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                  <input type="checkbox" checked={!!p.save} onChange={(e) => updateP(i, { save: e.target.checked })} data-testid={`open-save-player-${i}`} className="accent-[#10B981]" />
+                  Save to Players tab (enables credit &amp; history)
+                </label>
+              )}
               {players.length > 1 && (
                 <div className="text-[10px] text-zinc-500">Ratio can be set at billing time.</div>
               )}

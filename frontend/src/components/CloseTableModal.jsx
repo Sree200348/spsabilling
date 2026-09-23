@@ -17,6 +17,8 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   const [ratios, setRatios] = useState({});
   const [tablePayerId, setTablePayerId] = useState("__split");
   const [showSplit, setShowSplit] = useState(false);
+  const [mode, setMode] = useState("pay"); // pay | credit
+  const [savePlayer, setSavePlayer] = useState(true);
 
   async function refresh() {
     try {
@@ -34,7 +36,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   const players = b?.per_player || [];
   // Payment resolution: a null amount on the first row means "the rest of the bill"
   const others = payments.slice(1).reduce((a, p) => a + Number(p.amount || 0), 0);
-  const resolved = payments.map((p, i) => ({ method: p.method, amount: i === 0 && p.amount === null ? Math.max(0, +(final - others).toFixed(2)) : Number(p.amount || 0) }));
+  const resolved = mode === "credit" ? [] : payments.map((p, i) => ({ method: p.method, amount: i === 0 && p.amount === null ? Math.max(0, +(final - others).toFixed(2)) : Number(p.amount || 0) }));
   const totalPaid = resolved.reduce((a, p) => a + p.amount, 0);
   const due = Math.max(0, +(final - totalPaid).toFixed(2));
 
@@ -45,7 +47,8 @@ export default function CloseTableModal({ session, onClose, onDone }) {
     try {
       const r = await api.post(`/sessions/${session.id}/close`, {
         manual_discount: Number(manualDiscount) || 0, payments: resolved,
-        table_payer_id: tablePayerId !== "__split" ? tablePayerId : null, pay_full: payFull,
+        table_payer_id: tablePayerId !== "__split" ? tablePayerId : null, pay_full: mode === "pay" && payFull,
+        save_player: due > 0 && !session.player_id && savePlayer,
       });
       return r.data;
     } catch (e) { toast.error(apiErr(e)); return null; }
@@ -97,8 +100,14 @@ export default function CloseTableModal({ session, onClose, onDone }) {
 
             {/* Payment */}
             <div className="space-y-2">
-              <div className="text-xs uppercase tracking-widest text-zinc-400">Payment</div>
-              {payments.map((p, i) => (
+              <div className="flex items-center justify-between">
+                <div className="text-xs uppercase tracking-widest text-zinc-400">Payment</div>
+                <div className="flex gap-1 bg-zinc-900 rounded-md p-0.5">
+                  <button onClick={() => setMode("pay")} className={`px-3 py-1 text-xs font-bold rounded ${mode === "pay" ? "bg-[#10B981] text-[#0A0A0A]" : "text-zinc-400"}`} data-testid="pay-mode-pay">Pay now</button>
+                  <button onClick={() => setMode("credit")} className={`px-3 py-1 text-xs font-bold rounded ${mode === "credit" ? "bg-[#F59E0B] text-[#0A0A0A]" : "text-zinc-400"}`} data-testid="pay-mode-credit">Credit</button>
+                </div>
+              </div>
+              {mode === "pay" && payments.map((p, i) => (
                 <div key={p._key} className="flex gap-2 items-center">
                   <select data-testid={`pay-method-${i}`} value={p.method} onChange={(e) => setPay(i, "method", e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded h-10 px-2 text-sm w-28">
                     {METHODS.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}
@@ -107,13 +116,19 @@ export default function CloseTableModal({ session, onClose, onDone }) {
                   {payments.length > 1 && <Button variant="ghost" onClick={() => setPayments(payments.filter((_, x) => x !== i))} className="h-10 w-10 p-0 text-red-400" data-testid={`pay-remove-${i}`}><Trash2 size={14}/></Button>}
                 </div>
               ))}
-              <div className="flex justify-between items-center text-xs">
+              {mode === "pay" && <div className="flex justify-between items-center text-xs">
                 <button onClick={() => setPayments([...payments, { _key: crypto.randomUUID(), method: "upi", amount: 0 }])} className="text-[#10B981] flex items-center gap-1" data-testid="pay-add"><Plus size={12}/> Add another method</button>
                 {payments[0].amount !== null && <button onClick={() => setPay(0, "amount", null)} className="text-zinc-400 underline" data-testid="pay-fill-full">Fill full</button>}
-              </div>
+              </div>}
               {due > 0 && (
-                <div className="rounded-md bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-2 text-xs text-[#F59E0B]" data-testid="close-unpaid-note">
-                  <b>{fmt(due)} unpaid</b> — it will appear in Payments to collect later.
+                <div className="rounded-md bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-2 text-xs text-[#F59E0B] space-y-2" data-testid="close-unpaid-note">
+                  <div><b>{fmt(due)} on credit</b> — {mode === "credit" ? "the whole bill" : "the balance"} will show in Payments &amp; Credit to collect later.</div>
+                  {!session.player_id && (
+                    <label className="flex items-start gap-2 text-zinc-200 cursor-pointer">
+                      <input type="checkbox" checked={savePlayer} onChange={(e) => setSavePlayer(e.target.checked)} data-testid="close-save-player" className="accent-[#10B981] mt-0.5" />
+                      <span>Save <b>{session.player_name}</b> to Players so this credit is tracked on their account</span>
+                    </label>
+                  )}
                 </div>
               )}
             </div>

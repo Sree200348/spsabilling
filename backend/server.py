@@ -242,6 +242,7 @@ class SessionPlayerIn(BaseModel):
     mobile: Optional[str] = ""
     player_id: Optional[str] = None
     ratio: float = 1.0
+    save: bool = False  # create a Players-tab record for this walk-in name
 
 
 class OpenSessionReq(BaseModel):
@@ -300,6 +301,7 @@ class CloseReq(BaseModel):
     end_time: Optional[str] = None
     table_payer_id: Optional[str] = None  # if set, one player pays entire table amount
     pay_full: bool = False  # if true, top up first payment to match final_amount (avoid rounding-drift credits)
+    save_player: bool = False  # unlinked session: create a Players record so credit is tracked per player
 
 
 class CreditPaymentReq(BaseModel):
@@ -821,11 +823,18 @@ async def open_session(body: OpenSessionReq, _: dict = Depends(get_current_user)
     _joined = start_time
     if body.players:
         for p in body.players:
+            pid = p.player_id
+            if not pid and p.save and p.name.strip():
+                newp = {"id": new_id(), "name": p.name.strip(), "mobile": p.mobile or "", "email": "", "membership_id": None,
+                        "membership_start": None, "membership_end": None, "notes": "", "credit_balance": 0.0,
+                        "total_visits": 0, "total_spent": 0.0, "created_at": iso(now_utc())}
+                await db.players.insert_one(newp)
+                pid = newp["id"]
             players_list.append({
                 "id": new_id(),
                 "name": p.name,
                 "mobile": p.mobile or "",
-                "player_id": p.player_id,
+                "player_id": pid,
                 "ratio": max(0.0, float(p.ratio or 1.0)),
                 "joined_at": _joined,
             })
@@ -1099,6 +1108,18 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
     if pauses and not pauses[-1].get("end"):
         pauses[-1]["end"] = end_time
     entries[-1]["end_time"] = end_time
+
+    if not s.get("player_id") and body.save_player and (s.get("player_name") or "").strip():
+        newp = {"id": new_id(), "name": s["player_name"].strip(), "mobile": s.get("player_mobile") or "", "email": "", "membership_id": None,
+                "membership_start": None, "membership_end": None, "notes": "", "credit_balance": 0.0,
+                "total_visits": 0, "total_spent": 0.0, "created_at": iso(now_utc())}
+        await db.players.insert_one(newp)
+        s["player_id"] = newp["id"]
+        for pl in s.get("players", []):
+            if not pl.get("player_id") and pl.get("name") == s["player_name"]:
+                pl["player_id"] = newp["id"]
+                break
+        await db.sessions.update_one({"id": sid}, {"$set": {"player_id": newp["id"], "players": s.get("players", [])}})
 
     player = await db.players.find_one({"id": s.get("player_id")}, {"_id": 0}) if s.get("player_id") else None
     membership = await _get_active_membership(player) if player else None
