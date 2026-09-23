@@ -53,6 +53,13 @@ Complete billing/management website for a snooker parlour with: dashboard/live t
 - [x] Add Player modal (running frame): "New Player" tab creates a brand-new player (name/mobile, optional save to players list) and joins them mid-session (Jun 2026, self-tested)
 - [x] Rounding-drift fix: unlinked sessions absorb ≤₹1 drift into first payment instead of 400 — verified iteration_7
 
+## Phase 4 (Jun 2026) — Multi-club + Payments
+- [x] Multi-tenant: `/register` creates an isolated club (owner admin + seeded tables/memberships/inventory/settings); every collection scoped by `club_id` via `_ScopedCollection` + ContextVar; legacy data migrated to club `default`; header shows club name
+- [x] Payments page (/payments): unpaid bills, player-wise totals (incl. unlinked/walk-in), all closed bills, invoice details, collect payment (partial/full) that also clears linked player's credit
+- [x] Unpaid bills allowed for unlinked sessions & walk-in sales (no more 400)
+- [x] Billing: per-player table split = ratio of TOTAL table bill (join time ignored); "Split Equal" removed; minute-wise billing (completed minutes)
+- Verified: iteration_8 (16/16 backend, frontend 100%)
+
 ## Backlog (P1/P2)
 - P2: Invoice save-as-PDF option
 - P2: Low-stock alerts/badge on dashboard

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 8 comprehensive testing complete for multi-club registration, tenant isolation, /payments page (unpaid list + collect flow), unlinked underpayment (no more 400), minute-wise billing, and ratio-of-total per-player table split. All 16 backend pytest cases pass. Frontend register→dashboard flow, club-name header uppercase, 4 seeded tables, Payments page tabs, player-wise filter, Details modal, Collect modal (partial→full), and absence of pay-split-equal button all verified via Playwright. No blockers.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      { "screen": "Dialogs (CollectModal, InvoiceModal)", "issues": ["Radix warning in console: 'Missing Description or aria-describedby={undefined} for {DialogContent}' — a11y-only, does not affect functionality. Consider adding <DialogDescription> or aria-describedby to satisfy Radix a11y contract."] }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_multiclub_payments.py",
+    "/app/test_reports/pytest/iter8_results.xml"
+  ],
+  "action_items": [
+    "(Optional/minor) Add DialogDescription to CollectModal and InvoiceModal to silence Radix a11y console warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py _ScopedCollection is correctly scoping every read/write by current_club (set on login/register/get_current_user). Tenant isolation verified end-to-end: new club's player+invoice not visible to default admin, and new club sees only its own user.",
+    "server.py register() (~L458): seeds 4 tables/2 memberships/4 inventory/settings via seed_club_defaults; players+invoices empty; settings.business_name==club_name — all verified.",
+    "server.py compute_session_billing (L369-424): per-player table_share is now `total_table_amount * (ratio / sum_ratios)` — presence_seconds is computed but not used as a weight, matching the new spec 'ratio of TOTAL table bill (not weighted by join time)'. Verified 1:1→50/50 and 2:1→66.67/33.33 even when player B joined mid-session.",
+    "server.py _entry_billable_seconds (L322): `// 60 * 60` floors to completed minutes — 1900s (31m40s) → 1860s and amount 320/60*31=165.33 — exact match.",
+    "server.py close_session (L1024): credit_amount computed for BOTH linked & unlinked sessions; no 400 raised for unlinked underpayment. walk_in_sale (L939) same behavior. Both verified.",
+    "server.py /invoices/unpaid (L1117): groups by player_id or 'walkin:<lowername>' for unlinked — matches Payments.jsx keyOf(). Response includes total_due, count, invoices, by_player[due,billed,paid,invoices]. Verified.",
+    "server.py /invoices/{iid}/collect (L1133): full validation - rejects settled (400), over-collect (400), amount<=0 (400). On linked player decrements credit_balance by amt and inserts credit_payments doc with invoice_id. On full collect status→paid, credit→0. Payments array entries include collected_at. All verified.",
+    "Payments.jsx: keyOf uses same normalization as backend. data-testids in place: payments-total-due, payments-tab-unpaid, payments-tab-all, payments-player-<key>, bill-view-<num>, bill-collect-<num>, collect-due, collect-amount, collect-method, collect-save. All wired correctly.",
+    "CloseTableModal.jsx: pay-split-equal button removed as required (verified via DOM query). close-unpaid-note appears when credit>0. Generate Bill for unlinked underpayment succeeds.",
+    "Minor: /api/auth/register returns admin role but does not enforce club_name uniqueness (two clubs could share the same display name). Usernames ARE globally unique, so this is cosmetic only.",
+    "Minor: On preview-bill fetch and refresh() in CloseTableModal, ratiosInit gate prevents re-syncing when players are added mid-session; ratios can appear stale until modal reopens. Not blocking (backend recomputes on close)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8_multiclub_payments.py (new)"
+  ],
+  "success_rate": { "backend": "100% (16/16)", "frontend": "100%" },
+  "test_credentials": "admin/admin123, cashier/cashier123 (default club); dynamic registered UI/API test clubs use ui_test_<hex>/test_club_<hex> with password secret123",
+  "seed_data_creation": "New registered TEST/UI clubs left in DB (isolated, harmless). Under default club: TEST_ITR8_* players + several TEST_ closed unpaid/partial invoices remain (used by shared fixtures; consistent with prior iterations' pattern).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 8 fully green. Multi-tenant scoping via _ScopedCollection is bulletproof for the tested endpoints. Registration seeds all defaults idempotently. Unpaid+collect flow is complete: partial collect keeps status=partial and decrements player.credit_balance + writes credit_payments doc with invoice_id; full collect zeros credit and status=paid; over-collect and collect-on-settled both 400. Minute-wise billing: `bill_secs = floor(elapsed/60)*60`, amount = rate/60*minutes. Per-player table_share is `total_table_amount * ratio/sum_ratios` (presence ignored, as spec). CloseTableModal 'Fill Full' still exists but pay-split-equal removed. Run tests: `REACT_APP_BACKEND_URL=... pytest -o addopts= backend/tests/test_iter8_multiclub_payments.py -v`.",
+  "rca_of_the_issue": null
+}
