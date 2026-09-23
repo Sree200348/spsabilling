@@ -1,7 +1,8 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/api";
 import { LayoutDashboard, Users, Package, Award, CreditCard, BarChart3, Settings, LogOut, Menu, X, Wallet } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
@@ -17,8 +18,17 @@ const NAV = [
 export default function Layout({ children }) {
   const { user, logout, isAdmin } = useAuth();
   const nav = useNavigate();
+  const loc = useLocation();
   const [open, setOpen] = useState(false);
+  const [due, setDue] = useState({ count: 0, total_due: 0 });
   const visibleNav = useMemo(() => NAV.filter((n) => !n.adminOnly || isAdmin), [isAdmin]);
+
+  useEffect(() => {
+    const fetchDue = () => api.get("/invoices/unpaid").then(r => setDue({ count: r.data.count, total_due: r.data.total_due })).catch(() => {});
+    fetchDue();
+    const t = setInterval(fetchDue, 30000);
+    return () => clearInterval(t);
+  }, [loc.pathname]);
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white flex flex-col">
@@ -59,6 +69,9 @@ export default function Layout({ children }) {
               }
             >
               <n.icon size={16} /> {n.label}
+              {n.to === "/payments" && due.count > 0 && (
+                <span data-testid="payments-due-badge" title={`₹${due.total_due.toFixed(2)} outstanding`} className="ml-1 min-w-[20px] h-5 px-1.5 rounded-full bg-[#F59E0B] text-[#0A0A0A] text-[11px] font-black grid place-items-center animate-pulse">{due.count}</span>
+              )}
             </NavLink>
           ))}
         </nav>

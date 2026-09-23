@@ -58,6 +58,7 @@ Complete billing/management website for a snooker parlour with: dashboard/live t
 - [x] Payments page (/payments): unpaid bills, player-wise totals (incl. unlinked/walk-in), all closed bills, invoice details, collect payment (partial/full) that also clears linked player's credit
 - [x] Unpaid bills allowed for unlinked sessions & walk-in sales (no more 400)
 - [x] Billing: per-player table split = ratio of TOTAL table bill (join time ignored); "Split Equal" removed; minute-wise billing (completed minutes)
+- [x] Due reminders: amber pulsing badge on Payments nav with unpaid-bill count (auto-refreshes every 30s / on navigation), tooltip shows total due
 - Verified: iteration_8 (16/16 backend, frontend 100%)
 
 ## Backlog (P1/P2)
