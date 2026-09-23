@@ -49,7 +49,6 @@ export default function Login() {
           <div>
             <div className="text-xs text-[#10B981] font-bold uppercase tracking-[0.3em]">Sign In</div>
             <h2 className="text-3xl font-bold mt-2">Access your dashboard</h2>
-            <p className="text-sm text-zinc-400 mt-2">Default: <code className="text-[#10B981]">admin / admin123</code> or <code className="text-[#10B981]">cashier / cashier123</code></p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="username" className="text-zinc-300">Username</Label>
