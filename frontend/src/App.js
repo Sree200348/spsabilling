@@ -13,6 +13,8 @@ import Reports from "@/pages/Reports";
 import Admin from "@/pages/Admin";
 import Register from "@/pages/Register";
 import Payments from "@/pages/Payments";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import "@/App.css";
 
 function App() {
@@ -22,6 +24,8 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/" element={<Protected><Layout><Dashboard /></Layout></Protected>} />
           <Route path="/payments" element={<Protected><Layout><Payments /></Layout></Protected>} />
           <Route path="/players" element={<Protected><Layout><Players /></Layout></Protected>} />

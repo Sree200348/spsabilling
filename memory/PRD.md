@@ -60,6 +60,7 @@ Complete billing/management website for a snooker parlour with: dashboard/live t
 - [x] Billing: per-player table split = ratio of TOTAL table bill (join time ignored); "Split Equal" removed; minute-wise billing (completed minutes)
 - [x] Due reminders: amber pulsing badge on Payments nav with unpaid-bill count (auto-refreshes every 30s / on navigation), tooltip shows total due
 - [x] Reverted to seconds-wise table billing (user request); Close & Bill modal simplified: single-column summary, auto-filled payment, "Add another method", collapsible "Who pays what" for multi-player (Jun 2026, self-tested)
+- [x] Forgot password: (a) email reset link via Emergent-managed email (1-hour single-use token, `/reset-password?token=`), (b) username + club's registered mobile → set new password directly; 5-attempt/15-min throttle; optional Email field on Register & Admin > Users; default admin email = sree200348@gmail.com, default club mobile 9000000001
 - Verified: iteration_8 (16/16 backend, frontend 100%)
 
 ## Backlog (P1/P2)

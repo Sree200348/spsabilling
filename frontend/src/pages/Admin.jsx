@@ -156,7 +156,7 @@ function UsersTab() {
   useEffect(() => { load(); }, []);
   async function save() {
     try {
-      const body = { username: edit.username, role: edit.role, name: edit.name, password: edit.password };
+      const body = { username: edit.username, role: edit.role, name: edit.name, email: edit.email || "", password: edit.password };
       if (edit.id) await api.put(`/users/${edit.id}`, body); else await api.post("/users", body);
       toast.success("Saved"); setEdit(null); load();
     } catch (e) { toast.error(apiErr(e)); }
@@ -167,7 +167,7 @@ function UsersTab() {
   }
   return (
     <div>
-      <Button onClick={() => setEdit({ username: "", password: "", role: "cashier", name: "" })} className="mb-4 bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold" data-testid="admin-add-user"><Plus size={14} className="mr-1"/> Add User</Button>
+      <Button onClick={() => setEdit({ username: "", password: "", role: "cashier", name: "", email: "" })} className="mb-4 bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold" data-testid="admin-add-user"><Plus size={14} className="mr-1"/> Add User</Button>
       <div className="border border-zinc-800 rounded-md overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-900 text-xs uppercase tracking-wider text-zinc-400"><tr><th className="text-left p-3">Username</th><th className="text-left p-3">Name</th><th className="text-left p-3">Role</th><th className="p-3"></th></tr></thead>
@@ -193,6 +193,7 @@ function UsersTab() {
             <div className="space-y-3">
               <Fld label="Username"><Input data-testid="admin-user-username" value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} disabled={!!edit.id} className="bg-zinc-900 border-zinc-800" /></Fld>
               <Fld label="Display Name"><Input data-testid="admin-user-name" value={edit.name || ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} className="bg-zinc-900 border-zinc-800" /></Fld>
+              <Fld label="Email (for password reset)"><Input data-testid="admin-user-email" type="email" value={edit.email || ""} onChange={(e) => setEdit({ ...edit, email: e.target.value })} className="bg-zinc-900 border-zinc-800" /></Fld>
               <Fld label={edit.id ? "New Password (leave blank to keep)" : "Password"}><Input data-testid="admin-user-password" type="password" value={edit.password || ""} onChange={(e) => setEdit({ ...edit, password: e.target.value })} className="bg-zinc-900 border-zinc-800" /></Fld>
               <Fld label="Role">
                 <Select value={edit.role} onValueChange={(v) => setEdit({ ...edit, role: v })}>

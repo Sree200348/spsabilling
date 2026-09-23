@@ -12,10 +12,13 @@ from typing import Optional, List, Dict, Any
 
 import bcrypt
 import jwt
+import secrets
+from html import escape
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
+from emailer import send_email, EMAIL_FROM_NAME
 
 # ---------- App / DB Setup ----------
 mongo_url = os.environ['MONGO_URL']
@@ -179,6 +182,22 @@ class RegisterReq(BaseModel):
     password: str
     mobile: Optional[str] = ""
     location: Optional[str] = ""
+    email: Optional[str] = ""
+
+
+class ForgotReq(BaseModel):
+    username: str
+
+
+class ResetTokenReq(BaseModel):
+    token: str
+    new_password: str
+
+
+class ResetMobileReq(BaseModel):
+    username: str
+    mobile: str
+    new_password: str
 
 
 class CollectReq(BaseModel):
@@ -305,6 +324,7 @@ class UserIn(BaseModel):
     password: Optional[str] = None
     role: str = "cashier"
     name: Optional[str] = ""
+    email: Optional[str] = ""
 
 
 # ---------- Billing Utility ----------
@@ -467,12 +487,88 @@ async def register(body: RegisterReq):
     club = {"id": new_id(), "name": body.club_name.strip(), "mobile": body.mobile or "", "location": body.location or "", "created_at": iso(now_utc())}
     await raw_db.clubs.insert_one(club)
     current_club.set(club["id"])
-    user = {"id": new_id(), "username": uname, "password_hash": hash_pw(body.password), "role": "admin", "name": "Owner", "mobile": body.mobile or "", "created_at": iso(now_utc())}
+    user = {"id": new_id(), "username": uname, "password_hash": hash_pw(body.password), "role": "admin", "name": "Owner", "mobile": body.mobile or "", "email": (body.email or "").strip().lower(), "created_at": iso(now_utc())}
     await db.users.insert_one(user)
     await seed_club_defaults(club["name"], club.get("location", ""), club.get("mobile", ""))
     await audit({"id": user["id"], "username": uname, "role": "admin"}, "club_register", "club", club["id"], {"club": club["name"]})
     token = create_token(user["id"], uname, "admin")
     return {"token": token, "user": {"id": user["id"], "username": uname, "role": "admin", "name": "Owner", "club_id": club["id"], "club_name": club["name"]}}
+
+
+def _digits(s: str) -> str:
+    return "".join(ch for ch in (s or "") if ch.isdigit())[-10:]  # compare last 10 digits (ignore country code)
+
+
+async def _reset_throttle(key: str):
+    rec = await raw_db.reset_attempts.find_one({"key": key})
+    if rec and rec.get("count", 0) >= 5 and datetime.fromisoformat(rec["until"]) > now_utc():
+        raise HTTPException(429, "Too many attempts. Try again in 15 minutes.")
+
+
+async def _reset_fail(key: str):
+    await raw_db.reset_attempts.update_one({"key": key}, {"$inc": {"count": 1}, "$set": {"until": iso(now_utc() + timedelta(minutes=15))}}, upsert=True)
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotReq, request: Request):
+    uname = body.username.strip().lower()
+    await _reset_throttle(f"forgot:{uname}")
+    user = await raw_db.users.find_one({"username": uname})
+    await _reset_fail(f"forgot:{uname}")
+    if not user or not user.get("email"):
+        # Generic response: never reveal whether the username exists
+        return {"ok": True, "email_sent": False}
+    token = secrets.token_urlsafe(32)
+    await raw_db.password_reset_tokens.insert_one({"token": token, "user_id": user["id"], "expires_at": now_utc() + timedelta(hours=1), "used": False, "created_at": iso(now_utc())})
+    origin = request.headers.get("origin") or os.environ.get("FRONTEND_URL", "")
+    link = f"{origin}/reset-password?token={token}"
+    club = await raw_db.clubs.find_one({"id": user.get("club_id", "default")}, {"_id": 0})
+    html = (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#111">'
+            f'<h2 style="margin:0 0 12px">Reset your password</h2>'
+            f'<p>Hi {escape(user.get("name") or uname)}, a password reset was requested for your <strong>{escape(EMAIL_FROM_NAME)}</strong> account '
+            f'(<em>{escape(uname)}</em>, club: {escape((club or {}).get("name", ""))}).</p>'
+            f'<p><a href="{escape(link)}" style="display:inline-block;padding:12px 20px;background:#10B981;color:#0A0A0A;font-weight:bold;text-decoration:none;border-radius:6px">Choose a new password</a></p>'
+            f'<p style="font-size:13px;color:#555">This link works once and expires in 1 hour. If you did not request this, you can ignore this email.</p>'
+            f'<p style="font-size:12px;color:#888">Sent by {escape(EMAIL_FROM_NAME)}. We never ask for your password by email.</p></td></tr></table>')
+    await send_email(to=user["email"], subject=f"{EMAIL_FROM_NAME}: reset your password", html=html)
+    masked = user["email"][:2] + "***" + user["email"][user["email"].find("@"):]
+    return {"ok": True, "email_sent": True, "email_hint": masked}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetTokenReq):
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "Password min 6 chars")
+    rec = await raw_db.password_reset_tokens.find_one({"token": body.token})
+    if not rec or rec.get("used") or rec["expires_at"].replace(tzinfo=timezone.utc) < now_utc():
+        raise HTTPException(400, "Reset link is invalid or has expired")
+    await raw_db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_pw(body.new_password)}})
+    await raw_db.password_reset_tokens.update_one({"token": body.token}, {"$set": {"used": True}})
+    user = await raw_db.users.find_one({"id": rec["user_id"]})
+    current_club.set(user.get("club_id", "default"))
+    await audit({"id": user["id"], "username": user["username"], "role": user["role"]}, "password_reset_email", "user", user["id"])
+    return {"ok": True}
+
+
+@api.post("/auth/reset-by-mobile")
+async def reset_by_mobile(body: ResetMobileReq):
+    uname = body.username.strip().lower()
+    await _reset_throttle(f"mobile:{uname}")
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "Password min 6 chars")
+    user = await raw_db.users.find_one({"username": uname})
+    club = await raw_db.clubs.find_one({"id": (user or {}).get("club_id", "default")}) if user else None
+    settings = await raw_db.settings.find_one({"id": "main", "club_id": (user or {}).get("club_id", "default")}) if user else None
+    known = {_digits(x) for x in [(club or {}).get("mobile"), (settings or {}).get("phone"), (user or {}).get("mobile")] if _digits(x)}
+    given = _digits(body.mobile)
+    if not user or not given or given not in known:
+        await _reset_fail(f"mobile:{uname}")
+        raise HTTPException(400, "Username and registered mobile do not match")
+    await raw_db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": hash_pw(body.new_password)}})
+    await raw_db.reset_attempts.delete_one({"key": f"mobile:{uname}"})
+    current_club.set(user.get("club_id", "default"))
+    await audit({"id": user["id"], "username": uname, "role": user["role"]}, "password_reset_mobile", "user", user["id"])
+    return {"ok": True}
 
 
 @api.get("/auth/me")
@@ -500,6 +596,7 @@ async def create_user(body: UserIn, _: dict = Depends(require_admin)):
         "password_hash": hash_pw(body.password),
         "role": body.role,
         "name": body.name or "",
+        "email": (body.email or "").strip().lower(),
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(doc)
@@ -510,7 +607,7 @@ async def create_user(body: UserIn, _: dict = Depends(require_admin)):
 
 @api.put("/users/{uid}")
 async def update_user(uid: str, body: UserIn, _: dict = Depends(require_admin)):
-    update = {"role": body.role, "name": body.name or ""}
+    update = {"role": body.role, "name": body.name or "", "email": (body.email or "").strip().lower()}
     if body.password:
         update["password_hash"] = hash_pw(body.password)
     res = await db.users.update_one({"id": uid}, {"$set": update})

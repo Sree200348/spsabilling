@@ -55,7 +55,7 @@ export default function Login() {
             <Input id="username" data-testid="login-username-input" value={username} onChange={(e) => setU(e.target.value)} autoFocus className="bg-zinc-900 border-zinc-800 focus:border-[#10B981]" required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-zinc-300">Password</Label>
+            <div className="flex justify-between items-center"><Label htmlFor="password" className="text-zinc-300">Password</Label><Link to="/forgot-password" className="text-xs text-[#10B981] hover:underline" data-testid="login-forgot-link">Forgot password?</Link></div>
             <Input id="password" data-testid="login-password-input" type="password" value={password} onChange={(e) => setP(e.target.value)} className="bg-zinc-900 border-zinc-800 focus:border-[#10B981]" required />
           </div>
           <Button data-testid="login-submit-btn" type="submit" disabled={loading} className="w-full bg-[#10B981] text-[#0A0A0A] hover:bg-[#059669] font-bold h-11">

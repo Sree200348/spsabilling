@@ -11,14 +11,15 @@ const FIELDS = [
   ["club_name", "Club Name", "text", "e.g. Cue Masters Snooker Club"],
   ["username", "Owner Username", "text", "min 3 characters"],
   ["password", "Password", "password", "min 6 characters"],
-  ["mobile", "Mobile", "tel", "Contact number"],
+  ["mobile", "Mobile", "tel", "Used for password recovery"],
+  ["email", "Email", "email", "Optional · for password reset links"],
   ["location", "Location", "text", "City / Area"],
 ];
 
 export default function Register() {
   const { register } = useAuth();
   const nav = useNavigate();
-  const [form, setForm] = useState({ club_name: "", username: "", password: "", mobile: "", location: "" });
+  const [form, setForm] = useState({ club_name: "", username: "", password: "", mobile: "", email: "", location: "" });
   const [loading, setL] = useState(false);
 
   async function submit(e) {
@@ -59,7 +60,7 @@ export default function Register() {
             <div key={k} className="space-y-1">
               <Label htmlFor={k} className="text-zinc-300">{label}</Label>
               <Input id={k} data-testid={`register-${k.replace("_", "-")}-input`} type={type} placeholder={ph} value={form[k]}
-                onChange={(e) => setForm({ ...form, [k]: e.target.value })} required={k !== "location" && k !== "mobile"}
+                onChange={(e) => setForm({ ...form, [k]: e.target.value })} required={k !== "location" && k !== "mobile" && k !== "email"}
                 className="bg-zinc-900 border-zinc-800 focus:border-[#10B981]" />
             </div>
           ))}
