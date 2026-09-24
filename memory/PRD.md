@@ -63,6 +63,7 @@ Complete billing/management website for a snooker parlour with: dashboard/live t
 - [x] Forgot password: (a) email reset link via Emergent-managed email (1-hour single-use token, `/reset-password?token=`), (b) username + club's registered mobile → set new password directly; 5-attempt/15-min throttle; optional Email field on Register & Admin > Users; default admin email = sree200348@gmail.com, default club mobile 9000000001
 - [x] Close & Bill: "Pay now / Credit" toggle (full bill on credit); unlinked sessions get a "Save <name> to Players" checkbox so credit lands on a player account. Open Table: per-player "Save to Players tab" checkbox (default on) creates player records for walk-in names (Jun 2026, self-tested)
 - [x] Membership discount is per player: only a member's own share (table + optionally snacks) is discounted; if a non-member pays the whole table, no discount (Jun 2026, tested via backend/tests/test_membership_per_player.py)
+- [x] Close & Bill discount field: % / ₹ toggle (default %), converted to amount client-side; shows computed ₹ off (Jun 2026, self-tested)
 - Verified: iteration_8 (16/16 backend, frontend 100%)
 
 ## Backlog (P1/P2)

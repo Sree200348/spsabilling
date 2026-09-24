@@ -11,6 +11,9 @@ const METHODS = ["cash", "upi", "card"];
 
 export default function CloseTableModal({ session, onClose, onDone }) {
   const [manualDiscount, setManualDiscount] = useState(0);
+  const [discType, setDiscType] = useState("pct"); // pct | amt
+  const [baseTotal, setBaseTotal] = useState(0); // pre-manual-discount total, used to convert % → ₹
+  const discountAmt = discType === "pct" ? +(baseTotal * (Number(manualDiscount) || 0) / 100).toFixed(2) : (Number(manualDiscount) || 0);
   const [payments, setPayments] = useState([{ _key: crypto.randomUUID(), method: "cash", amount: null }]); // null = auto full
   const [preview, setPreview] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -23,13 +26,15 @@ export default function CloseTableModal({ session, onClose, onDone }) {
   async function refresh() {
     try {
       const r = await api.get(`/sessions/${session.id}/preview-bill`, {
-        params: { manual_discount: Number(manualDiscount) || 0, table_payer_id: tablePayerId !== "__split" ? tablePayerId : undefined },
+        params: { manual_discount: discountAmt, table_payer_id: tablePayerId !== "__split" ? tablePayerId : undefined },
       });
       setPreview(r.data);
+      const bb = r.data.billing;
+      setBaseTotal(+(bb.table_amount - bb.membership_discount + bb.snacks_total - bb.snacks_discount).toFixed(2));
       setRatios(prev => Object.keys(prev).length ? prev : Object.fromEntries((r.data.session.players || []).map(p => [p.id, Number(p.ratio) || 1])));
     } catch (e) { toast.error(apiErr(e)); }
   }
-  useEffect(() => { refresh(); }, [manualDiscount, tablePayerId]);
+  useEffect(() => { refresh(); }, [manualDiscount, discType, tablePayerId]);
 
   const b = preview?.billing;
   const final = b?.final_amount || 0;
@@ -46,7 +51,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
     setSaving(true);
     try {
       const r = await api.post(`/sessions/${session.id}/close`, {
-        manual_discount: Number(manualDiscount) || 0, payments: resolved,
+        manual_discount: discountAmt, payments: resolved,
         table_payer_id: tablePayerId !== "__split" ? tablePayerId : null, pay_full: mode === "pay" && payFull,
         save_player: due > 0 && !session.player_id && savePlayer,
       });
@@ -88,9 +93,15 @@ export default function CloseTableModal({ session, onClose, onDone }) {
               <Row k={`Table · ${fmtDuration(b.total_billable_seconds)}`} v={fmt(b.table_amount)} />
               {b.snacks_total > 0 && <Row k="Snacks" v={fmt(b.snacks_total)} />}
               {b.membership_discount > 0 && <Row k={`Membership discount${players.length > 1 ? " (members only)" : ` ${b.membership_percent}%`}`} v={`- ${fmt(b.membership_discount)}`} accent />}
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Discount</span>
-                <Input data-testid="close-manual-discount" type="number" min="0" value={manualDiscount} onChange={(e) => setManualDiscount(e.target.value)} className="w-24 h-8 bg-zinc-900 border-zinc-800 text-right" />
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-zinc-400">Discount{discType === "pct" && discountAmt > 0 ? <span className="text-[#10B981] text-xs ml-1">− {fmt(discountAmt)}</span> : null}</span>
+                <div className="flex items-center gap-1">
+                  <Input data-testid="close-manual-discount" type="number" min="0" max={discType === "pct" ? 100 : undefined} value={manualDiscount} onChange={(e) => setManualDiscount(e.target.value)} className="w-20 h-8 bg-zinc-900 border-zinc-800 text-right" />
+                  <div className="flex bg-zinc-900 rounded p-0.5 text-xs font-bold">
+                    <button onClick={() => { setDiscType("pct"); setManualDiscount(0); }} className={`px-2 py-0.5 rounded ${discType === "pct" ? "bg-[#10B981] text-[#0A0A0A]" : "text-zinc-400"}`} data-testid="disc-type-pct">%</button>
+                    <button onClick={() => { setDiscType("amt"); setManualDiscount(0); }} className={`px-2 py-0.5 rounded ${discType === "amt" ? "bg-[#10B981] text-[#0A0A0A]" : "text-zinc-400"}`} data-testid="disc-type-amt">₹</button>
+                  </div>
+                </div>
               </div>
               <div className="border-t border-zinc-800 pt-2 flex justify-between items-baseline">
                 <span className="font-bold">Total</span>
