@@ -378,22 +378,16 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
         total_session_secs += sess_secs
 
     snacks_total = round(sum(s["total"] for s in session.get("snacks", [])), 2)
-
-    mem_pct = float(membership["discount_percent"]) if membership else 0
-    membership_discount = round(total_table_amount * mem_pct / 100, 2)
-    snacks_discount = round(snacks_total * mem_pct / 100, 2) if (membership and apply_membership_to_snacks) else 0
     manual_discount = round(float(manual_discount or 0), 2)
+    mem_by_local = session.get("_memberships_by_local") or {}
 
-    final = round(total_table_amount - membership_discount + snacks_total - snacks_discount - manual_discount, 2)
-    if final < 0:
-        final = 0.0
-
-    # Per-player breakdown
+    # Per-player breakdown (membership applies ONLY to the member's own share)
     players_list = session.get("players", []) or []
     per_player = []
     table_payer_id = session.get("_table_payer_id")
+    membership_discount = 0.0
+    snacks_discount = 0.0
     if players_list:
-        # Presence billable seconds for each player from joined_at → now/end
         session_start = datetime.fromisoformat(session["entries"][0]["start_time"]) if session.get("entries") else now_utc()
         def _presence_secs(pl):
             joined = pl.get("joined_at") or iso(session_start)
@@ -436,14 +430,34 @@ def compute_session_billing(session: dict, membership: Optional[dict] = None, ma
                 elif not s.get("assigned_to"):
                     shared += s["total"]
             snack_share = round(direct + shared * share_ratio, 2)
+            mem = mem_by_local.get(pl["id"])
+            pct = float(mem["discount_percent"]) if mem else 0.0
+            p_mem_disc = round(table_share * pct / 100, 2) if mem else 0.0
+            p_snack_disc = round(snack_share * pct / 100, 2) if (mem and apply_membership_to_snacks) else 0.0
+            membership_discount += p_mem_disc
+            snacks_discount += p_snack_disc
             per_player.append({
                 "player_local_id": pl["id"], "player_id": pl.get("player_id"),
                 "name": pl.get("name"), "ratio": pl.get("ratio", 1),
                 "share_percent": round(share_ratio * 100, 2),
                 "presence_seconds": int(pres),
                 "table_share": table_share, "snacks_share": snack_share,
-                "subtotal": round(table_share + snack_share, 2),
+                "membership_name": mem["name"] if mem else None,
+                "membership_percent": pct,
+                "membership_discount": round(p_mem_disc + p_snack_disc, 2),
+                "subtotal": round(table_share + snack_share - p_mem_disc - p_snack_disc, 2),
             })
+        membership_discount = round(membership_discount, 2)
+        snacks_discount = round(snacks_discount, 2)
+        mem_pct = max([pp["membership_percent"] for pp in per_player] or [0])
+    else:
+        mem_pct = float(membership["discount_percent"]) if membership else 0
+        membership_discount = round(total_table_amount * mem_pct / 100, 2)
+        snacks_discount = round(snacks_total * mem_pct / 100, 2) if (membership and apply_membership_to_snacks) else 0
+
+    final = round(total_table_amount - membership_discount + snacks_total - snacks_discount - manual_discount, 2)
+    if final < 0:
+        final = 0.0
 
     return {
         "entries": entries_billing,
@@ -796,6 +810,19 @@ async def _get_active_membership(player: dict) -> Optional[dict]:
     return mem
 
 
+async def _memberships_by_local(s: dict) -> Dict[str, dict]:
+    """Map session-player local id -> active membership (only for linked players who are members)."""
+    out: Dict[str, dict] = {}
+    for pl in s.get("players", []) or []:
+        if not pl.get("player_id"):
+            continue
+        p = await db.players.find_one({"id": pl["player_id"]}, {"_id": 0})
+        mem = await _get_active_membership(p) if p else None
+        if mem:
+            out[pl["id"]] = mem
+    return out
+
+
 @api.get("/sessions/active")
 async def active_sessions(_: dict = Depends(get_current_user)):
     return await db.sessions.find({"status": {"$in": ["running", "paused"]}}, {"_id": 0}).to_list(200)
@@ -1084,7 +1111,7 @@ async def preview_bill(sid: str, apply_membership_to_snacks: bool = False, manua
     if s.get("player_id"):
         p = await db.players.find_one({"id": s["player_id"]}, {"_id": 0})
         membership = await _get_active_membership(p) if p else None
-    billing = compute_session_billing({**s, "_table_payer_id": table_payer_id}, membership=membership, manual_discount=manual_discount, apply_membership_to_snacks=apply_membership_to_snacks)
+    billing = compute_session_billing({**s, "_table_payer_id": table_payer_id, "_memberships_by_local": await _memberships_by_local(s)}, membership=membership, manual_discount=manual_discount, apply_membership_to_snacks=apply_membership_to_snacks)
     return {"session": s, "membership": membership, "billing": billing}
 
 
@@ -1125,7 +1152,7 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
     membership = await _get_active_membership(player) if player else None
 
     billing = compute_session_billing(
-        {**s, "entries": entries, "_table_payer_id": body.table_payer_id},
+        {**s, "entries": entries, "_table_payer_id": body.table_payer_id, "_memberships_by_local": await _memberships_by_local(s)},
         membership=membership,
         manual_discount=body.manual_discount,
         apply_membership_to_snacks=body.apply_membership_to_snacks,
@@ -1163,7 +1190,7 @@ async def close_session(sid: str, body: CloseReq, user: dict = Depends(get_curre
         "table_amount": billing["table_amount"],
         "snacks_total": billing["snacks_total"],
         "membership_id": membership["id"] if membership else None,
-        "membership_name": membership["name"] if membership else None,
+        "membership_name": ", ".join(sorted({pp["membership_name"] for pp in billing["per_player"] if pp.get("membership_name") and pp.get("membership_discount", 0) > 0})) or (membership["name"] if (membership and not billing["per_player"]) else None),
         "membership_percent": billing["membership_percent"],
         "membership_discount": billing["membership_discount"],
         "snacks_discount": billing["snacks_discount"],

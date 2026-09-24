@@ -61,7 +61,7 @@ export default function InvoiceModal({ invoice, onClose }) {
               {invoice.per_player.map((pp) => (
                 <div key={pp.player_local_id} className="mb-1">
                   <div className="flex justify-between font-semibold"><span>{pp.name} ({pp.share_percent}%)</span><span>{fmt(pp.subtotal)}</span></div>
-                  <div className="text-[10px] text-zinc-600 flex justify-between"><span>Table {fmt(pp.table_share)} · Snacks {fmt(pp.snacks_share)}</span></div>
+                  <div className="text-[10px] text-zinc-600 flex justify-between"><span>Table {fmt(pp.table_share)} · Snacks {fmt(pp.snacks_share)}{pp.membership_discount > 0 ? ` · ${pp.membership_name} −${fmt(pp.membership_discount)}` : ""}</span></div>
                 </div>
               ))}
             </div>

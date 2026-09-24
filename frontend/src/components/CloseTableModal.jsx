@@ -87,7 +87,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
             <div className="rounded-md border border-zinc-800 p-4 space-y-2 text-sm">
               <Row k={`Table · ${fmtDuration(b.total_billable_seconds)}`} v={fmt(b.table_amount)} />
               {b.snacks_total > 0 && <Row k="Snacks" v={fmt(b.snacks_total)} />}
-              {b.membership_discount > 0 && <Row k={`Membership ${b.membership_percent}%`} v={`- ${fmt(b.membership_discount)}`} accent />}
+              {b.membership_discount > 0 && <Row k={`Membership discount${players.length > 1 ? " (members only)" : ` ${b.membership_percent}%`}`} v={`- ${fmt(b.membership_discount)}`} accent />}
               <div className="flex justify-between items-center">
                 <span className="text-zinc-400">Discount</span>
                 <Input data-testid="close-manual-discount" type="number" min="0" value={manualDiscount} onChange={(e) => setManualDiscount(e.target.value)} className="w-24 h-8 bg-zinc-900 border-zinc-800 text-right" />
@@ -147,7 +147,7 @@ export default function CloseTableModal({ session, onClose, onDone }) {
                     </select>
                     {players.map(pp => (
                       <div key={pp.player_local_id} className="flex items-center justify-between gap-2" data-testid={`per-player-${pp.name}`}>
-                        <span className="truncate">{pp.name} <span className="text-zinc-500 text-xs">{pp.share_percent}%</span></span>
+                        <span className="truncate">{pp.name} <span className="text-zinc-500 text-xs">{pp.share_percent}%</span>{pp.membership_percent > 0 && <span className="text-[#10B981] text-[10px] ml-1">member −{pp.membership_percent}%</span>}</span>
                         <div className="flex items-center gap-2">
                           {tablePayerId === "__split" && <Input data-testid={`ratio-input-${pp.name}`} type="number" min="0" step="0.5" value={ratios[pp.player_local_id] ?? pp.ratio} onChange={(e) => changeRatio(pp.player_local_id, e.target.value)} className="bg-zinc-900 border-zinc-800 h-7 w-14 text-right text-xs" title="Ratio" />}
                           <span className="text-[#10B981] font-bold w-20 text-right">{fmt(pp.subtotal)}</span>
